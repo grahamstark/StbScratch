@@ -19,6 +19,7 @@ using Revise
 @reexport using PlutoUI
 @reexport using Format
 @reexport using DrWatson
+@reexport using Cleaner
 
 # Statistics, StatsModels, Tidier, StatsKit, Pluto, PlutoUI, Format
 
