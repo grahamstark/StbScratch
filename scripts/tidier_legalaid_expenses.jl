@@ -1,4 +1,4 @@
-using Tidier,DataFrames,CSV,PrettyTables,Format,CategoricalArrays
+using StatsBase,Tidier,DataFrames,CSV,PrettyTables,Format,CategoricalArrays #,Cleaner
 using ScottishTaxBenefitModel
 using .Utils
 
@@ -50,32 +50,37 @@ uccount = @chain df begin
           # @mutate( pct = 100*n/tot)
 end
 
+function loadfrs( year::Int, table="househol" )::DataFrame
+   df = CSV.File( "/mnt/data/frs/$(year)/tab/$(table).tab") |> DataFrame
+   df.year = fill( year, size(df)[1])
+   rename!( df, lowercase.(names(df)))
+end
+
+
+
 tot = sum( uccount.n)
 uccount.pct = 100.0 .* uccount.n ./ tot
 
 pretty_table( outf, uccount, formatters=count_pct , backend = Val(:markdown), cell_first_line_only=true)
 
-frshh17 = CSV.File( "/mnt/data/frs/2017/tab/househol.tab") |> DataFrame
-frshh18 = CSV.File( "/mnt/data/frs/2018/tab/househol.tab") |> DataFrame
-frshh19 = CSV.File( "/mnt/data/frs/2019/tab/househol.tab") |> DataFrame
-frshh20 = CSV.File( "/mnt/data/frs/2020/tab/househol.tab") |> DataFrame
-frshh21 = CSV.File( "/mnt/data/frs/2021/tab/househol.tab") |> DataFrame
-rename!( frshh17, lowercase.(names(frshh17)))
-frshh17.year = fill( 2017, size(frshh17)[1])
-rename!( frshh18, lowercase.(names(frshh18)))
-frshh18.year = fill( 2018, size(frshh18)[1])
-rename!( frshh19, lowercase.(names(frshh19)))
-frshh19.year = fill( 2019, size(frshh19)[1])
-rename!( frshh20, lowercase.(names(frshh20)))
-frshh20.year = fill( 2020, size(frshh20)[1])
-rename!( frshh21, lowercase.(names(frshh21)))
-frshh21.year = fill( 2021, size(frshh21)[1])
-
+frshh17 = loadfrs(2017) # CSV.File( "/mnt/data/frs/2017/tab/househol.tab") |> DataFrame
+frshh18 = loadfrs(2018)
+frshh19 = loadfrs(2019)
+frshh20 = loadfrs(2020)
+frshh21 = loadfrs(2021)
 frshh = vcat( frshh17, frshh18, frshh19, frshh20, frshh21; cols=:intersect )
 
-frshh.xweight = Weights(frshh.gross4)./3
+frsmaint21 = loadfrs( 2021, "maint" )
+frsmort21 = loadfrs( 2021, "mortgage" )
+frsend21 = loadfrs( 2021, "endowmnt" )
+frscont21 = loadfrs( 2021, "mortcont" )
+frspers21 = loadfrs( 2021, "person" )
+hbai = CSV.File("/mnt/data/hbai/UKDA-5828-tab/tab/i1821e_2122prices.tab")|>DataFrame 
+rename!( hbai, lowercase.(names(hbai)))
 
-avcosts = @chain frshh begin
+frshh.xweight = Weights(frshh.gross4./5)
+
+avcosts_frs = @chain frshh begin
    @group_by( tentyp2, year )
    @mutate( hhrent = max(0, hhrent ), 
             mortpay=max(0, mortpay), 
@@ -87,8 +92,18 @@ avcosts = @chain frshh begin
    @arrange( tentyp2 )
 end
 
-for c in collect(avcosts)
+for c in collect(avcosts_frs)
    pretty_table(c)
 end
+
+# i1821e_2122prices.tab
+
+ @chain frshh begin
+   @mutate( gbhscost = max.(0,gbhscost), hhrent=max.(0,hhrent), mortint=max(0,mortint))
+   @group_by(gvtregn,year,tentyp2)
+   @summarise( m_hc = mean( gbhscost ),m_int=mean(mortint), m_rent=mean(hhrent)) 
+   @arrange(year,tentyp2,gvtregn)
+ end
+
 
 close(outf)
