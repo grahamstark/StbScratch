@@ -2,6 +2,8 @@ using StatsBase,Tidier,DataFrames,CSV,PrettyTables,Format,CategoricalArrays #,Cl
 using ScottishTaxBenefitModel
 using .Utils
 
+include( "scripts/utils.jl")
+
 function count_pct(v, r, c)
    if c == 1
       return pretty(v)
@@ -49,13 +51,6 @@ uccount = @chain df begin
           @summarize( n=sum(weight) )
           # @mutate( pct = 100*n/tot)
 end
-
-function loadfrs( year::Int, table="househol" )::DataFrame
-   df = CSV.File( "/mnt/data/frs/$(year)/tab/$(table).tab") |> DataFrame
-   df.year = fill( year, size(df)[1])
-   rename!( df, lowercase.(names(df)))
-end
-
 
 
 tot = sum( uccount.n)
