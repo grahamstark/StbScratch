@@ -1,5 +1,5 @@
 
-using CSV,DataFrames,StatsBase
+using CSV,DataFrames,StatsBase,ArgCheck
 using ScottishTaxBenefitModel
 using .LegalAidOutput,.LegalAidData 
 using .GeneralTaxComponents: WEEKS_PER_YEAR
@@ -81,8 +81,11 @@ function make_summary_tab(
     return tab
 end
 
-data1=CSV.File( "/tmp/output/local_legal_aid_runner_test_v2_1_legal_aid_aa.tab")|>DataFrame
-props1 = CSV.File("/tmp/output/legal_aid_aa_propensities.tab")|>DataFrame
+data_aa=CSV.File( "/tmp/output/local_legal_aid_runner_test_v2_1_legal_aid_aa.tab")|>DataFrame
+props_aa = CSV.File("/tmp/output/legal_aid_aa_propensities.tab")|>DataFrame
+pre_aa = data_aa
+post_aa= data_aa
+#=
 pre = LegalAidOutput.merge_in_probs_and_props( 
     data1, 
     LegalAidData.LA_PROB_DATA, 
@@ -91,11 +94,15 @@ post = LegalAidOutput.merge_in_probs_and_props(
     data1, 
     LegalAidData.LA_PROB_DATA, 
     props1 )
-st =  make_summary_tab( pre, post, true )
+=#
+st_aa =  make_summary_tab( pre_aa, post_aa, true )
 
-data2=CSV.File( "/tmp/output/local_legal_aid_runner_test_v2_1_legal_aid_civil.tab")|>DataFrame
-props2 = CSV.File("/tmp/output/legal_aid_civil_propensities.tab")|>DataFrame
+data_civ=CSV.File( "/tmp/output/local_legal_aid_runner_test_v2_1_legal_aid_civil.tab")|>DataFrame
+props_civ = CSV.File("/tmp/output/legal_aid_civil_propensities.tab")|>DataFrame
+pre_civ = data_civ
+post_civ = data_civ
 
+#=
 pre2 = LegalAidOutput.merge_in_probs_and_props( 
     data2, 
     LegalAidData.LA_PROB_DATA, 
@@ -104,5 +111,31 @@ post2 = LegalAidOutput.merge_in_probs_and_props(
     data2, 
     LegalAidData.LA_PROB_DATA, 
     props2 )
-st2 =  make_summary_tab( pre2, post2, false )
-   
+=#
+st_civ =  make_summary_tab( pre_civ, post_civ, false )
+
+costs = LegalAidData.CIVIL_COSTS
+costs[(costs.la_status.==la_none).&(costs.hsm_censored .!= "adults_with_incapacity"),:]
+
+gc_civ = groupby(costs,[:hsm])
+
+size(gc_civ[2])==2579
+
+
+data_civ[data_civ.entitlement.=="la_none",[:entitlement,:contact_or_parentage_prop]]
+sum(data_civ.contact_or_parentage_prop.*data_civ.weight) # 4794.40487416573
+
+labs=["Full_time_Employee"
+ "Full_time_Self_Employed"
+ "Looking_after_family_or_home"
+ "Missing_ILO_Employment"
+ "Other_Inactive"
+ "Part_time_Employee"
+ "Part_time_Self_Employed"
+ "Permanently_sick_or_disabled"
+ "Retired"
+ "Student"
+ "Temporarily_sick_or_injured"
+ "Unemployed"]
+ x=LegalAidOutput.combine_one_legal_aid( data_civ, LegalAidOutput.LA_TARGETS[1], [:wt_contact_or_parentage],["Contact"])
+ 
