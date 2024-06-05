@@ -150,6 +150,7 @@ dall.Gender= convert.(String,dall.Gender)
 dall.Owner_Occupier= convert.(String,dall.Owner_Occupier)
 dall.General_Health= convert.(String,dall.General_Health)
 dall.Little_interest_in_things = convert.(String,dall.Little_interest_in_things )
+dall.old_or_destitute = dall.Age .>= 50 .| dall.At_Risk_of_Destitution .>= 70
 
 close( outf )
 # annoying strings
@@ -180,11 +181,14 @@ end
 
 diffregs_simple=[]
 for policy in POLICIES
-    depvar = Symbol( "$(policy)_change")
-    relgains =Symbol("$(policy)_treat_relgains" )
-    relsec =Symbol("$(policy)_treat_security" )
-    relflourish =Symbol("$(policy)_treat_other_argument" )
-    v = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relsec) + $(relflourish) )), dall )
+    for old_and_dest in [false,true]
+        depvar = Symbol( "$(policy)_change")
+        relgains =Symbol("$(policy)_treat_relgains" )
+        relsec =Symbol("$(policy)_treat_security" )
+        relflourish =Symbol("$(policy)_treat_other_argument" )
+        dall_sample = dall[ dall.old_or_destitute .== old_and_dest,:]
+        v = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relsec) + $(relflourish) )), dall_sample )
+    end
     push!( diffregs_simple, v )
 end 
 
