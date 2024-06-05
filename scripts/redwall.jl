@@ -60,6 +60,8 @@ RENAMES = Dict(
     "Q66.24_6"=>"Shouldnt_Rely_On_Government" )
 
 function create_one!( dall::DataFrame; label :: String, initialq :: String, finalq :: String, treatqs :: Vector{String} )
+    dall[:,"$(label)_treat_absgains_v"] = dall[:,"$(treatqs[1])"]
+    
     dall[:,"$(label)_treat_absgains"] = ( .! ismissing.( dall[:,"$(treatqs[1])"] ) )
     dall[:,"$(label)_treat_relgains"] = ( .! ismissing.( dall[:,"$(treatqs[2])"] ) )
     dall[:,"$(label)_treat_security"] = ( .! ismissing.( dall[:,"$(treatqs[3])"] ) )
@@ -68,6 +70,16 @@ function create_one!( dall::DataFrame; label :: String, initialq :: String, fina
     dall[:,"$(label)_change"] = dall[:,"$(label)_post"] - dall[:,"$(label)_pre"]
     dall[:,"$(label)_strong_approve_pre"] = dall[:,"$(label)_pre"] .>= 70
     dall[:,"$(label)_strong_approve_post"] = dall[:,"$(label)_post"] .>= 70
+    # interaction terms with old or 
+    dall[:,"$(label)_treat_absgains_old_or_destitute"] = dall.old_or_destitute .* dall[:,"$(label)_treat_absgains"]
+    dall[:,"$(label)_treat_relgains_old_or_destitute"] = dall.old_or_destitute .* dall[:,"$(label)_treat_relgains"]
+    dall[:,"$(label)_treat_security_old_or_destitute"] = dall.old_or_destitute .* dall[:,"$(label)_treat_security"]
+    dall[:,"$(label)_treat_other_argument_old_or_destitute"] = dall.old_or_destitute .* dall[:,"$(label)_treat_other_argument"]
+
+    dall[:,"$(label)_treat_absgains_destitute"] = dall.destitute .* dall[:,"$(label)_treat_absgains"]
+    dall[:,"$(label)_treat_relgains_destitute"] = dall.destitute .* dall[:,"$(label)_treat_relgains"]
+    dall[:,"$(label)_treat_security_destitute"] = dall.destitute .* dall[:,"$(label)_treat_security"]
+    dall[:,"$(label)_treat_other_argument_destitute"] = dall.destitute .* dall[:,"$(label)_treat_other_argument"]
 end
 
 
@@ -124,10 +136,9 @@ function recode_employment( employment :: AbstractString ) :: String
     end
 end
 
-
-rename!( dall, RENAMES )
-# dall = dall[dall.HH_Net_income_PA .> 0,:] # skip zeto incomes 
-dall = dall[(.! ismissing.(dall.HH_Net_Income_PA )) .& (dall.HH_Net_Income_PA .> 0),:]
+# needs to be done before renaming..
+dall.old_or_destitute = (dall."Q66.2" .>= 50) .| (dall."Q66.9_1" .>= 70)
+dall.destitute = (dall."Q66.9_1" .>= 70)
 
 create_one!( dall; label="basic_income", initialq="Q5.1_4", finalq="Q10.1_4", treatqs=["Q6.1_4","Q7.1_4","Q8.1_4","Q9.1_4"])
 create_one!( dall; label="green_nd", initialq="Q11.1_4", finalq="Q16.1_4", treatqs=["Q12.1_4","Q13.1_4","Q14.1_4","Q15.1_4"])
@@ -140,6 +151,10 @@ create_one!( dall; label="transport", initialq="Q47.1_4", finalq="Q52.1_4", trea
 create_one!( dall; label="democracy", initialq="Q53.1_4", finalq="Q58.1_4", treatqs=["Q54.1_4","Q55.1_4","Q56.1_4","Q57.1_4"])
 create_one!( dall; label="tax", initialq="Q59.1_4", finalq="Q64.1_4", treatqs=["Q60.1_4","Q61.1_4","Q62.1_4","Q63.1_4"])
 
+rename!( dall, RENAMES )
+# dall = dall[dall.HH_Net_income_PA .> 0,:] # skip zeto incomes 
+dall = dall[(.! ismissing.(dall.HH_Net_Income_PA )) .& (dall.HH_Net_Income_PA .> 0),:]
+
 dall.HH_Net_Income_PA .= recode_income.( dall.HH_Net_Income_PA)
 dall.ethnic_2 = recode_ethnic.( dall.Ethnic )
 dall.last_election = recode_party.( dall.Party_Last_Election )
@@ -150,7 +165,6 @@ dall.Gender= convert.(String,dall.Gender)
 dall.Owner_Occupier= convert.(String,dall.Owner_Occupier)
 dall.General_Health= convert.(String,dall.General_Health)
 dall.Little_interest_in_things = convert.(String,dall.Little_interest_in_things )
-dall.old_or_destitute = dall.Age .>= 50 .| dall.At_Risk_of_Destitution .>= 70
 
 close( outf )
 # annoying strings
@@ -158,46 +172,57 @@ close( outf )
 POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
 
 regs=[]
+simpleregs = []
 for policy in POLICIES
-    depvar = Symbol( "$(policy)_strong_approve_pre")
-    v = glm( @eval(@formula( $(depvar) ~ 
+    depvar = Symbol( "$(policy)_pre")
+    v = lm( @eval(@formula( $(depvar) ~ 
         Age + Age^2 + Age^3 + last_election+ ethnic_2 + employment_2 + 
         log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender + 
-        At_Risk_of_Destitution)), dall, Binomial(), ProbitLink() )
+        At_Risk_of_Destitution)), dall )
     push!( regs, v )
+    v = lm( @eval(@formula( $(depvar) ~ 
+        Age + Age^2 + Age^3 + At_Risk_of_Destitution)), dall)
+    push!( simpleregs, v )
 end 
 
 ##  + Ladder + General_Health + Little_interest_in_things
 
-diffregs=[]
+absgain_regs=[]
 for policy in POLICIES
-    depvar = Symbol( "$(policy)_change")
-    relgains =Symbol("$(policy)_treat_relgains" )
-    relsec =Symbol("$(policy)_treat_security" )
-    relflourish =Symbol("$(policy)_treat_other_argument" )
-    v = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relsec) + $(relflourish) + Age + Age^2 + Age^3 + last_election+ ethnic_2 + employment_2 + log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender )), dall )
-    push!( diffregs, v )
+    depvar = Symbol( "$(policy)_treat_absgains_v")
+    v = lm( @eval(@formula( $(depvar) ~ Age + Age^2 + Age^3 + last_election + ethnic_2 + employment_2 + log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender + At_Risk_of_Destitution )), dall )
+    push!( absgain_regs, v )
 end 
 
 diffregs_simple=[]
 for policy in POLICIES
-    for old_and_dest in [false,true]
-        depvar = Symbol( "$(policy)_change")
-        relgains =Symbol("$(policy)_treat_relgains" )
-        relsec =Symbol("$(policy)_treat_security" )
-        relflourish =Symbol("$(policy)_treat_other_argument" )
-        dall_sample = dall[ dall.old_or_destitute .== old_and_dest,:]
-        v = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relsec) + $(relflourish) )), dall_sample )
-    end
+    depvar = Symbol( "$(policy)_change")
+    relgains = Symbol( "$(policy)_treat_relgains" )
+    relsec =Symbol( "$(policy)_treat_security" )
+    relflourish = 
+        Symbol( "$(policy)_treat_other_argument" )
+    absgains_destitute = 
+        Symbol( "$(policy)_treat_absgains_destitute" )
+    relgains_destitute = 
+        Symbol( "$(policy)_treat_relgains_destitute" )
+    relsec_destitute = 
+        Symbol( "$(policy)_treat_security_destitute" )
+    relflourish_destitute = Symbol("$(policy)_treat_other_argument_destitute" )    
+    v = lm( @eval(@formula( $(depvar) ~ $(absgains_destitute) + $(relgains) + $(relsec) + $(relflourish) + $(relgains_destitute) + $(relsec_destitute) + $(relflourish_destitute) )), dall )
     push!( diffregs_simple, v )
 end 
 
-regtable(regs[1:5]...;file="tmp/actnow-probits-1-5.html",stat_below = false, render=HtmlTable())
-regtable(regs[6:10]...;file="tmp/actnow-probits-6-10.html",stat_below = false, render=HtmlTable())
-regtable(diffregs[1:5]...;file="tmp/actnow-change-ols-1-5.html",stat_below = false, render=HtmlTable())
-regtable(diffregs[6:10]...;file="tmp/actnow-change-ols-6-10.html",stat_below = false, render=HtmlTable())
-regtable(diffregs_simple[1:5]...;file="tmp/actnow-change--simple-ols-1-5.html",stat_below = false, render=HtmlTable())
-regtable(diffregs_simple[6:10]...;file="tmp/actnow-change--simple-ols-6-10.html",stat_below = false, render=HtmlTable())
+regtable(regs[1:5]...;file="tmp/actnow-ols-1-5.html",stat_below = false, render=HtmlTable())
+regtable(regs[6:10]...;file="tmp/actnow-ols-6-10.html",stat_below = false, render=HtmlTable())
+
+regtable(simpleregs[1:5]...;file="tmp/actnow-simple-ols-1-5.html",stat_below = false, render=HtmlTable())
+regtable(simpleregs[6:10]...;file="tmp/actnow-simple-ols-6-10.html",stat_below = false, render=HtmlTable())
+
+regtable(absgain_regs[1:5]...;file="tmp/actnow-absgain-ols-1-5.html",stat_below = false, render=HtmlTable())
+regtable(absgain_regs[6:10]...;file="tmp/actnow-absgains-ols-6-10.html",stat_below = false, render=HtmlTable())
+
+regtable(diffregs_simple[1:5]...;file="tmp/actnow-change-simple-ols-1-5.html",stat_below = false, render=HtmlTable())
+regtable(diffregs_simple[6:10]...;file="tmp/actnow-change-simple-ols-6-10.html",stat_below = false, render=HtmlTable())
 
 # v = glm( @formula( basic_income_strong_approve_pre ~ Age + Age^2 + Party_Last_Election+ Ethnic + Employment_Status + log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender ), dall, Binomial(), ProbitLink() )
 
