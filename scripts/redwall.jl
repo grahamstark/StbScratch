@@ -85,12 +85,45 @@ outf = open( "tmp/red-wall-regressions.txt", "w")
 
 dn = CSV.File("$(DATA_DIR)/national_censored.csv")|>DataFrame
 dr = CSV.File("$(DATA_DIR)/red_censored.csv")|>DataFrame
-dr.is_redwall .= true
 dn.is_redwall .= false
+dr.is_redwall .= true
 
 dall = vcat(dn,dr)
 
 CSV.write( "$(DATA_DIR)/national_censored.tab", dall; delim='\t')
+
+function recode_ethnic( ethnic :: AbstractString ) :: String
+    return ethnic == "1. English, Welsh, Scottish, Northern Irish or British" ? "Ethnic British" : "Other Ethnic" 
+end
+
+function recode_party( party :: AbstractString ) :: String
+    return if party in ["Conservative Party"]
+        "Conservative"
+    elseif party in ["Green Party", "Plaid Cymru", "Scottish National Party"]
+        "Nat/Green"
+    elseif party in ["Labour Party"]
+        "Labour"
+    elseif party in ["Liberal Democrats"]
+        "LibDem"
+    elseif party in ["Other (please name below)", "Independent candidate","Brexit Party"]
+        "Other/Brexit"
+    else 
+        "No Vote/DK/Refused"
+    end
+end
+
+function recode_employment( employment :: AbstractString ) :: String
+    return if employment in [
+        "In full-time paid work (30 or more hours a week)"
+        "In irregular or occasional work"
+        "Self-employed"
+        "In part-time paid work (less than 30 hours a week)"]
+        "Working/SE Inc. Part-Time"
+    else
+        "Not Working, Inc. Retired/Caring/Student"
+    end
+end
+
 
 rename!( dall, RENAMES )
 # dall = dall[dall.HH_Net_income_PA .> 0,:] # skip zeto incomes 
@@ -108,22 +141,32 @@ create_one!( dall; label="democracy", initialq="Q53.1_4", finalq="Q58.1_4", trea
 create_one!( dall; label="tax", initialq="Q59.1_4", finalq="Q64.1_4", treatqs=["Q60.1_4","Q61.1_4","Q62.1_4","Q63.1_4"])
 
 dall.HH_Net_Income_PA .= recode_income.( dall.HH_Net_Income_PA)
+dall.ethnic_2 = recode_ethnic.( dall.Ethnic )
+dall.last_election = recode_party.( dall.Party_Last_Election )
+dall.employment_2 = recode_employment.(dall.Employment_Status)
 dall.log_income = log.(dall.HH_Net_Income_PA)
 dall.age_sq = dall.Age .^2
+dall.Gender= convert.(String,dall.Gender)
+dall.Owner_Occupier= convert.(String,dall.Owner_Occupier)
+dall.General_Health= convert.(String,dall.General_Health)
+dall.Little_interest_in_things = convert.(String,dall.Little_interest_in_things )
 
 close( outf )
 # annoying strings
-dall.Gender= convert.(String,dall.Gender)
-dall.Owner_Occupier= convert.(String,dall.Owner_Occupier)
 
 POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
 
 regs=[]
 for policy in POLICIES
     depvar = Symbol( "$(policy)_strong_approve_pre")
-    v = glm( @eval(@formula( $(depvar) ~ Age + Age^2 + Age^3 + Party_Last_Election+ Ethnic + Employment_Status + log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender )), dall, Binomial(), ProbitLink() )
+    v = glm( @eval(@formula( $(depvar) ~ 
+        Age + Age^2 + Age^3 + last_election+ ethnic_2 + employment_2 + 
+        log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender + 
+        At_Risk_of_Destitution)), dall, Binomial(), ProbitLink() )
     push!( regs, v )
 end 
+
+##  + Ladder + General_Health + Little_interest_in_things
 
 diffregs=[]
 for policy in POLICIES
@@ -131,7 +174,7 @@ for policy in POLICIES
     relgains =Symbol("$(policy)_treat_relgains" )
     relsec =Symbol("$(policy)_treat_security" )
     relflourish =Symbol("$(policy)_treat_other_argument" )
-    v = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relsec) + $(relflourish) + Age + Age^2 + Age^3 + Party_Last_Election+ Ethnic + Employment_Status + log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender )), dall )
+    v = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relsec) + $(relflourish) + Age + Age^2 + Age^3 + last_election+ ethnic_2 + employment_2 + log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender )), dall )
     push!( diffregs, v )
 end 
 

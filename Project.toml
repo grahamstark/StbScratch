@@ -5,6 +5,8 @@ version = "1.0.0-DEV"
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
 Cleaner = "caabdcdb-0ab6-47cf-9f62-08858e44f38f"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
@@ -27,6 +29,7 @@ StatsKit = "2cb19f9e-ec4d-5c53-8573-a4542a68d3f0"
 StatsModels = "3eaba693-59b7-5ba5-a881-562e759f1c8d"
 Tar = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 Tidier = "f0413319-3358-4bb0-8e7c-0c83523a93bd"
+WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 
 [compat]
 julia = "1"
