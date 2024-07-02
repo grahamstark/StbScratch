@@ -5,6 +5,24 @@ using GLM,DataFrames,CSV,Pluto,CairoMakie,CategoricalArrays,RegressionTables
 
 DATA_DIR="/mnt/data/ActNow/Surveys/live/"
 
+const MAIN_EXPLANVARS = [
+    :destitute, 
+    :poorhealth,
+    :unsatisfied_with_income,
+    :Owner_Occupier, 
+    :down_the_ladder,
+    :not_managing_financially]
+
+#=
+Q66.6 # HH_Net_Income_PA
+Q66.8 # Owner_Occupier
+Q66.9_1 # At_Risk_of_Destitution
+Q66.10  # "Managing_Financially"
+Q66.11  # Satisfied_With_Income
+Q66.12  # Ladder
+Q66.13  # General_Health
+=#
+
 RENAMES = Dict(
     "Q65.2_1"=>"Support_All_Policies",
     "Q65.3_1"=>"Any_Argument",
@@ -59,9 +77,23 @@ RENAMES = Dict(
     "Q66.24_5"=>"Politicians_Want_To_Make_Things_Better",
     "Q66.24_6"=>"Shouldnt_Rely_On_Government" )
 
-function create_one!( dall::DataFrame; label :: String, initialq :: String, finalq :: String, treatqs :: Vector{String} )
+"""
+This convoluted function creates a bunch or binary variables in the dataframe `dall` for some question and treatments.
+    @param `labels` - for readable variable names e.g. "basic_income"
+    @param `initialq` - initial opinion on the thing
+    @param `finalq` - final (post explanation) opinion
+    @param `treatqs` - three strings representing the 3 explanations for that thing - abs gains, rel gains, security
+    adds in variables like `basic_income_treat_absgains_destitute`
+"""
+function create_one!( 
+    dall::DataFrame; 
+    label :: String, 
+    initialq :: String, 
+    finalq :: String, 
+    treatqs :: Vector{String} )
     dall[:,"$(label)_treat_absgains_v"] = dall[:,"$(treatqs[1])"]
     
+    # identify subsets wo
     dall[:,"$(label)_treat_absgains"] = ( .! ismissing.( dall[:,"$(treatqs[1])"] ) )
     dall[:,"$(label)_treat_relgains"] = ( .! ismissing.( dall[:,"$(treatqs[2])"] ) )
     dall[:,"$(label)_treat_security"] = ( .! ismissing.( dall[:,"$(treatqs[3])"] ) )
@@ -70,12 +102,7 @@ function create_one!( dall::DataFrame; label :: String, initialq :: String, fina
     dall[:,"$(label)_change"] = dall[:,"$(label)_post"] - dall[:,"$(label)_pre"]
     dall[:,"$(label)_strong_approve_pre"] = dall[:,"$(label)_pre"] .>= 70
     dall[:,"$(label)_strong_approve_post"] = dall[:,"$(label)_post"] .>= 70
-    # interaction terms with old or 
-    dall[:,"$(label)_treat_absgains_old_or_destitute"] = dall.old_or_destitute .* dall[:,"$(label)_treat_absgains"]
-    dall[:,"$(label)_treat_relgains_old_or_destitute"] = dall.old_or_destitute .* dall[:,"$(label)_treat_relgains"]
-    dall[:,"$(label)_treat_security_old_or_destitute"] = dall.old_or_destitute .* dall[:,"$(label)_treat_security"]
-    dall[:,"$(label)_treat_other_argument_old_or_destitute"] = dall.old_or_destitute .* dall[:,"$(label)_treat_other_argument"]
-
+    
     dall[:,"$(label)_treat_absgains_destitute"] = dall.destitute .* dall[:,"$(label)_treat_absgains"]
     dall[:,"$(label)_treat_relgains_destitute"] = dall.destitute .* dall[:,"$(label)_treat_relgains"]
     dall[:,"$(label)_treat_security_destitute"] = dall.destitute .* dall[:,"$(label)_treat_security"]
@@ -137,7 +164,7 @@ function recode_employment( employment :: AbstractString ) :: String
 end
 
 # needs to be done before renaming..
-dall.old_or_destitute = (dall."Q66.2" .>= 50) .| (dall."Q66.9_1" .>= 70)
+# dall.old_or_destitute = (dall."Q66.2" .>= 50) .| (dall."Q66.9_1" .>= 70)
 dall.destitute = (dall."Q66.9_1" .>= 70)
 
 create_one!( dall; label="basic_income", initialq="Q5.1_4", finalq="Q10.1_4", treatqs=["Q6.1_4","Q7.1_4","Q8.1_4","Q9.1_4"])
@@ -164,86 +191,95 @@ dall.age_sq = dall.Age .^2
 dall.Gender= convert.(String,dall.Gender)
 dall.Owner_Occupier= convert.(String,dall.Owner_Occupier)
 dall.General_Health= convert.(String,dall.General_Health)
+
 dall.Little_interest_in_things = convert.(String,dall.Little_interest_in_things )
 
+dall.poorhealth = dall.General_Health .∈ (["Bad","Very bad"],)
+dall.unsatisfied_with_income = dall.Satisfied_With_Income .∈ ( 
+    ["1. Completely dissatisfied","2. Mostly dissatisfied", "3. Somewhat dissatisfied]"], )
+dall.not_managing_financially = dall.Managing_Financially .∈ ( 
+    ["5. Finding it very difficult", "4.\tFinding it quite difficult"], )
+dall.down_the_ladder = dall.Ladder .<= 4
+
+#
+# Dump modified data
+#
+CSV.write( joinpath( DATA_DIR, "national-w-created-vars.tab"), dall; delim='\t')
+
 close( outf )
-# annoying strings
 
-POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
 
-regs=[]
-simpleregs = []
-for policy in POLICIES
-    depvar = Symbol( "$(policy)_pre")
-    v = lm( @eval(@formula( $(depvar) ~ 
-        Age + Age^2 + Age^3 + last_election+ ethnic_2 + employment_2 + 
-        log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender + 
-        At_Risk_of_Destitution)), dall )
-    push!( regs, v )
-    v = lm( @eval(@formula( $(depvar) ~ 
-        Age + Age^2 + Age^3 + At_Risk_of_Destitution)), dall)
-    push!( simpleregs, v )
-end 
+const POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
 
-##  + Ladder + General_Health + Little_interest_in_things
 
-absgain_regs=[]
-for policy in POLICIES
-    depvar = Symbol( "$(policy)_treat_absgains_v")
-    v = lm( @eval(@formula( $(depvar) ~ Age + Age^2 + Age^3 + last_election + ethnic_2 + employment_2 + log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender + At_Risk_of_Destitution )), dall )
-    push!( absgain_regs, v )
-end 
+function runregressions( mainvar :: Symbol )
+    #
+    # regressions: for each policy, before the explanation, do a big regression and a simple one and add them to a list
+    # the convoluted `@eval(@formula( $(depvar)` bit just allows to sub in each dependent variable `$(depvar)`
+    #
+    regs=[]
+    simpleregs = []
+    for policy in POLICIES
+        depvar = Symbol( "$(policy)_pre")
+        reg = lm( @eval(@formula( $(depvar) ~ 
+            Age + Age^2 + last_election+ ethnic_2 + employment_2 + 
+            log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender + 
+            $(mainvar))), dall )
+        push!( regs, reg )
+        reg = lm( @eval(@formula( $(depvar) ~ 
+            Age + Age^2 + $( mainvar ))), dall)
+        push!( simpleregs, reg )
+    end 
+    #
+    # regression of change in popularity of each policy against each explanation
+    #
+    diffregs=[]
+    for policy in POLICIES
+        depvar = Symbol( "$(policy)_change")
+        relgains = Symbol( "$(policy)_treat_relgains" )
+        relsec =Symbol( "$(policy)_treat_security" )
+        absgains =Symbol( "$(policy)_treat_absgains" )
+        relflourish = 
+            Symbol( "$(policy)_treat_other_argument" )
+        reg = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relsec) + $(relflourish) + 
+            $(absgains)*$(mainvar) + $(relgains)*$(mainvar) + $(relsec)*$(mainvar) + 
+            $(relflourish)*$(mainvar) )), dall )
+        push!( diffregs, reg )
+    end 
 
-diffregs_simple=[]
-for policy in POLICIES
-    depvar = Symbol( "$(policy)_change")
-    relgains = Symbol( "$(policy)_treat_relgains" )
-    relsec =Symbol( "$(policy)_treat_security" )
-    relflourish = 
-        Symbol( "$(policy)_treat_other_argument" )
-    absgains_destitute = 
-        Symbol( "$(policy)_treat_absgains_destitute" )
-    relgains_destitute = 
-        Symbol( "$(policy)_treat_relgains_destitute" )
-    relsec_destitute = 
-        Symbol( "$(policy)_treat_security_destitute" )
-    relflourish_destitute = Symbol("$(policy)_treat_other_argument_destitute" )    
-    v = lm( @eval(@formula( $(depvar) ~ $(absgains_destitute) + $(relgains) + $(relsec) + $(relflourish) + $(relgains_destitute) + $(relsec_destitute) + $(relflourish_destitute) )), dall )
-    push!( diffregs_simple, v )
-end 
+    regtable(regs[1:5]...;file="tmp/actnow-$(mainvar)-ols-1-5.html",stat_below = false, render=HtmlTable())
+    regtable(regs[6:10]...;file="tmp/actnow-$(mainvar)-ols-6-10.html",stat_below = false, render=HtmlTable())
 
-regtable(regs[1:5]...;file="tmp/actnow-ols-1-5.html",stat_below = false, render=HtmlTable())
-regtable(regs[6:10]...;file="tmp/actnow-ols-6-10.html",stat_below = false, render=HtmlTable())
+    regtable(simpleregs[1:5]...;file="tmp/actnow-simple-$(mainvar)-ols-1-5.html",stat_below = false, render=HtmlTable())
+    regtable(simpleregs[6:10]...;file="tmp/actnow-simple-$(mainvar)-ols-6-10.html",stat_below = false, render=HtmlTable())
 
-regtable(simpleregs[1:5]...;file="tmp/actnow-simple-ols-1-5.html",stat_below = false, render=HtmlTable())
-regtable(simpleregs[6:10]...;file="tmp/actnow-simple-ols-6-10.html",stat_below = false, render=HtmlTable())
+    regtable(diffregs[1:5]...;file="tmp/actnow-change-$(mainvar)-ols-1-5.html",stat_below = false, render=HtmlTable())
+    regtable(diffregs[6:10]...;file="tmp/actnow-change-$(mainvar)-ols-6-10.html",stat_below = false, render=HtmlTable())
 
-regtable(absgain_regs[1:5]...;file="tmp/actnow-absgain-ols-1-5.html",stat_below = false, render=HtmlTable())
-regtable(absgain_regs[6:10]...;file="tmp/actnow-absgains-ols-6-10.html",stat_below = false, render=HtmlTable())
-
-regtable(diffregs_simple[1:5]...;file="tmp/actnow-change-simple-ols-1-5.html",stat_below = false, render=HtmlTable())
-regtable(diffregs_simple[6:10]...;file="tmp/actnow-change-simple-ols-6-10.html",stat_below = false, render=HtmlTable())
-
-# v = glm( @formula( basic_income_strong_approve_pre ~ Age + Age^2 + Party_Last_Election+ Ethnic + Employment_Status + log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender ), dall, Binomial(), ProbitLink() )
-
-for policy in POLICIES
-    f = Figure()
-    scats = []
-    ax = Axis(f[1,1],title="$(policy) : pre- and post- treatment by argument type.",xlabel="Pre",ylabel="Post")
-    for d in ["treat_absgains","treat_relgains","treat_security","treat_other_argument"]
-        treatment = "$(policy)_$(d)"
-        pre = "$(policy)_pre"
-        post = "$(policy)_post"
-        dd = dall[dall[:,treatment] .> 0,:]
-        x = scatter!( ax, dd[:,pre], dd[:,post] )
-        push!(scats,x)
+    # v = glm( @formula( basic_income_strong_approve_pre ~ Age + Age^2 + Party_Last_Election+ Ethnic + Employment_Status + log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender ), dall, Binomial(), ProbitLink() )
+    #=
+    for policy in POLICIES
+        f = Figure()
+        scats = []
+        ax = Axis(f[1,1],title="$(policy) : pre- and post- treatment by argument type.",xlabel="Pre",ylabel="Post")
+        for d in ["treat_absgains","treat_relgains","treat_security","treat_other_argument"]
+            treatment = "$(policy)_$(d)"
+            pre = "$(policy)_pre"
+            post = "$(policy)_post"
+            dd = dall[dall[:,treatment] .> 0,:]
+            x = scatter!( ax, dd[:,pre], dd[:,post] )
+            push!(scats,x)
+        end
+        Legend( f[1,2],scats,["Absolute Gains","Relative Gains","Security","The Other Argument"])
+        save( "tmp/img/$(policy)_pre_post.svg", f )
     end
-    Legend( f[1,2],scats,["Absolute Gains","Relative Gains","Security","The Other Argument"])
-    save( "tmp/img/$(policy)_pre_post.svg", f )
+
+    for policy in POLICIES
+        println( "<img src='img/$(policy)_pre_post.svg' />")
+    end
+    =#
 end
 
-for policy in POLICIES
-    println( "<img src='img/$(policy)_pre_post.svg' />")
+for mainvar in MAIN_EXPLANVARS
+    runregressions( mainvar )
 end
-
-
