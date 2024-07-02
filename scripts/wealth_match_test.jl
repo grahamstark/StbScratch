@@ -8,13 +8,19 @@ ind=CSV.File( "../ScottishTaxBenefitModel/data/was-wave-7-frs-scotland-only-matc
 #
 ind2=CSV.File( "../ScottishTaxBenefitModel/data/was-wave-7-frs-scotland-only-matches-2015-2021-w2.tab")|>DataFrame
 
+# with was/frs own income 
+ind3=CSV.File( "../ScottishTaxBenefitModel/data/was-wave-7-frs-scotland-only-matches-2015-2021-w3.tab")|>DataFrame
+
 was_sel = wass[(wass.case .∈ ((ind.was_case_1),)),:]
 was_sel2 = wass[(wass.case .∈ ((ind2.was_case_1),)),:]
+was_sel3 = wass[(wass.case .∈ ((ind3.was_case_1),)),:]
 
 countmap( ind.was_case_1 )
 
 # more WAS cases used
 countmap( ind2.was_case_1 )
+# more WAS cases used
+countmap( ind3.was_case_1 )
 
 size(ind)
 
@@ -74,7 +80,8 @@ OrderedCollections.OrderedDict{Int64, Int64} with 11 entries:
 =#
 
 sort(countmap( ind2.was_case_1 ), rev=true, byvalue=true )
-#= was records with over 100 mappings
+#= was records with over 100 mappings, v2:
+
 OrderedDict{Int64, Int64} with 4233 entries:
   7566  => 212
   8704  => 202
@@ -89,8 +96,32 @@ OrderedDict{Int64, Int64} with 4233 entries:
   1639  => 108
 =#
 
-was_highmap = wass[wass.case .∈ ([7566,8704,7147,10052,16941,14385,11436,15504,12085,9533,1639],),:]
+sort(countmap( ind3.was_case_1 ), rev=true, byvalue=true )
+#= v3 - much better
+ 12848 => 103
+  8704  => 68
+  16339 => 61
+  14385 => 53
+  978   => 53
+  5210  => 50
+  6076  => 47
+  15312 => 45
+  13646 => 44
+  2442  => 43
+  933   => 43
+
+=#
+
+was_highmap_2 = wass[wass.case .∈ ([7566,8704,7147,10052,16941,14385,11436,15504,12085,9533,1639],),:]
+was_highmap_3 = wass[wass.case .∈ ([12848, 8704, 16339, 14385, 978, 5210, 6076, 15312, 13646],),:]
 
 #=
 all low income hhlds in Scotland, with 0 wages and 0 SE
 =#
+
+# == TRY WITH WAS/FRS computed hh income 
+
+capcomp = CSV.File( "data/capcompare.tab")|>DataFrame
+capcomp_w3 = CSV.File( "data/capcompare-w3.tab")|>DataFrame
+
+
