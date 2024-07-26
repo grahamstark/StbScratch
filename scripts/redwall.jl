@@ -2,6 +2,8 @@
 # 
 #
 using GLM,DataFrames,CSV,Pluto,CairoMakie,CategoricalArrays,RegressionTables
+using ScottishTaxBenefitModel
+using .Utils 
 
 DATA_DIR="/mnt/data/ActNow/Surveys/live/"
 
@@ -22,6 +24,23 @@ Q66.11  # Satisfied_With_Income
 Q66.12  # Ladder
 Q66.13  # General_Health
 =#
+
+function corrmatrix( df, keys ) :: DataFrame
+    corrtars = Symbol.(string.(keys).*"_pre")
+    n = length(keys)
+    corrs = cor(Matrix(dr[:,corrtars]))
+    corrs = convert(Array{Union{Float64,Missing}},corrs)    
+    println(corrs)
+    for r in 1:n
+        for c in (r+1):n
+            corrs[r,c] = missing
+        end
+    end
+    labels = pretty.(keys)
+    df = DataFrame( corrs, labels )
+    df." " = labels
+    df
+end
 
 RENAMES = Dict(
     "Q65.2_1"=>"Support_All_Policies",
@@ -193,7 +212,7 @@ dall.Owner_Occupier= convert.(String,dall.Owner_Occupier)
 dall.General_Health= convert.(String,dall.General_Health)
 
 dall.Little_interest_in_things = convert.(String,dall.Little_interest_in_things )
-
+dall.age5 = dall.Age .÷ 5
 dall.poorhealth = dall.General_Health .∈ (["Bad","Very bad"],)
 dall.unsatisfied_with_income = dall.Satisfied_With_Income .∈ ( 
     ["1. Completely dissatisfied","2. Mostly dissatisfied", "3. Somewhat dissatisfied]"], )
@@ -282,4 +301,50 @@ end
 
 for mainvar in MAIN_EXPLANVARS
     runregressions( mainvar )
+end
+
+POLICIES 
+const POL_COLS = scale_color_manual( :blue,:red,:orange,:green,:grey,:purple )
+const BLANK = ggplot() + 
+    theme( xticklabelsvisible = false, xgridvisible = false, yticklabelsvisible = false,
+        ygridvisible = false, xtickcolor = :transparent, ytickcolor = :transparent, 
+        bottomspinevisible = false, topspinevisible = false, rightspinevisible = false, 
+        leftspinevisible = false )
+
+
+function draw_policies( dr::DataFrame, pol :: Symbol ) :: Tuple
+    policy = Symbol("$(pol)_pre")
+    label = pretty( pol )
+    title = "$(label) vs Democratic Preference (before treatment)"
+    # polcolours = parse.(Colorant,[])
+    sp = aes( x=:democracy_pre, y=policy )
+    scatter = ggplot(dr, sp ) + 
+        geom_point( @aes(color=last_election ), size=4 ) +
+        geom_smooth() +
+        labs(x = "Democracy", y = label, title=title ) +
+        POL_COLS
+    democ = ggplot(dr) +
+        geom_histogram( aes(:democracy_pre )) + 
+        theme(xticklabelsvisible = false, xgridvisible = false)
+    polplot = ggplot(dr) +
+        geom_histogram( aes( policy ), direction = :x) + 
+        theme(yticklabelsvisible = false, ygridvisible = false)
+    p = democ + BLANK + scatter + polplot + 
+        plot_layout(ncol = 2, nrow = 2, widths = [2, 1], heights = [1, 2])
+    f = ggplot(dr, sp ) + 
+        geom_point(size=4) +
+        # geom_smooth() +
+        labs(x = "Democracy", y = label ) +
+        facet_wrap( :last_election ) 
+    p, scatter, f
+end
+
+for p in POLICIES 
+    title = pretty( string(p))
+    if p !== :democracy 
+        threeplot, scatter, facet = draw_policies( dr, p )
+        ggsave( "tmp/actnow-$(p)-multi.svg", threeplot; scale=1,height=800, width=800)
+        ggsave( scatter, "tmp/actnow-$(p)-scatter.svg" )
+        ggsave( facet, "tmp/actnow-$(p)-facet.svg" )
+    end
 end
