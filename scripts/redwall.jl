@@ -1,7 +1,7 @@
 #
 # 
 #
-using GLM,DataFrames,CSV,Pluto,CairoMakie,CategoricalArrays,RegressionTables
+using GLM,DataFrames,CSV,Pluto,CairoMakie,CategoricalArrays,RegressionTables,PrettyTables
 using ScottishTaxBenefitModel
 using .Utils 
 
@@ -24,6 +24,18 @@ Q66.11  # Satisfied_With_Income
 Q66.12  # Ladder
 Q66.13  # General_Health
 =#
+
+function form(v,i,j)
+    return if ismissing(v)
+      ""
+    elseif typeof(v) <: AbstractString
+        v
+    else
+        Format.format(v; precision=2)
+    end
+
+end
+
 
 function corrmatrix( df, keys ) :: DataFrame
     corrtars = Symbol.(string.(keys).*"_pre")
