@@ -1,7 +1,18 @@
 #
 # 
 #
-using GLM,DataFrames,CSV,Pluto,CairoMakie,CategoricalArrays,RegressionTables,PrettyTables
+using AlgebraOfGraphics,
+    CategoricalArrays,
+    ColorSchemes,
+    CSV,
+    DataFrames,
+    GLM,
+    PrettyTables,
+    RegressionTables,
+    StatsBase,
+    SurveyDataWeighting,
+    Tidier
+
 using ScottishTaxBenefitModel
 using .Utils 
 
@@ -25,16 +36,10 @@ Q66.12  # Ladder
 Q66.13  # General_Health
 =#
 
-function form(v,i,j)
-    return if ismissing(v)
-      ""
-    elseif typeof(v) <: AbstractString
-        v
-    else
-        Format.format(v; precision=2)
-    end
-
-end
+form( v :: Missing, i, j ) = ""
+form( v :: AbstractString, i, j ) = v
+form( v :: Integer, i, j ) = "$v"
+form( v :: Number, i, j ) = Format.format(v; precision=2 )
 
 
 function corrmatrix( df, keys ) :: DataFrame
@@ -151,91 +156,187 @@ function recode_income( inc )
   end
 end
 
+const TARGET_SET = [
+    5464261.0,	#	m18-30 1
+    8576471,	#	m31-50 2
+    6435265,	#	m51-65 3
+    5483397,	#	m'66+  4
+    5443882,	#	f18-30 5
+    9030913,	#	f31-50 6
+    6689300,	#	f51-65 7
+    6523340,	#	f66+   8
+    12963893,	#	Labour 9
+    6914076,	#	Conservatives 10
+    3168952,	#	Reform/Other 11
+    2880865,	#	Lib Dem 12
+    2880865]	#	Greens, etc 13
+    # 24838177]	#	No Vote - omit collinear
+
+
+function make_target_set( dall :: DataFrame ) :: Tuple
+
+    function age_slot( gender :: String, age :: Int  )
+        a = if age <= 30
+            1
+        elseif age <= 50
+            2
+        elseif age <= 65
+            3
+        else
+            4
+        end
+        return gender == "Male" ? a : a+4
+    end
+
+    ncols = length( TARGET_SET )
+    nrows = size(dall)[1]
+    m = zeros(nrows,ncols)
+    row = 1
+    for r in eachrow( dall )
+        sex = if r.Gender in  ["Male","Female"]
+            r.Gender
+        else
+            rand( ["Male", "Female"])
+        end
+        at = age_slot( sex, r.Age )
+        m[row,at] = 1.0
+        pol = if r.next_election == "Labour"
+            1
+        elseif r.next_election == "Conservative"   # => 792
+            2
+        elseif r.next_election == "Other/Brexit"     #  => 75
+            3
+        elseif r.next_election == "LibDem"            # => 116
+            4
+        elseif r.next_election == "Nat/Green"         # => 137
+            5
+        elseif r.next_election == "No Vote/DK/Refused" # => 382
+            6
+        else
+            @assert false "unrecognised $(r.next_election)"
+        end
+        at = pol + 8
+        if at <= 13 # skip dks
+            m[row,at] = 1.0
+        end
+        row += 1
+    end
+    pop = sum(TARGET_SET[1:8])
+    w = pop/nrows
+    initial_weights = fill( w, nrows )
+    m, initial_weights
+end
+
+function reweight( 
+    dall :: DataFrame, 
+    lower_multiple = 0.25, 
+    upper_multiple = 4.80  )::AbstractWeights
+    data, initial_weights = make_target_set( dall )
+     # any smaller min and d_and_s_constrained fails on this dataset
+    
+    weights = do_reweighting(
+        data               = data,
+        initial_weights    = initial_weights,
+        target_populations = TARGET_SET,
+        functiontype       = constrained_chi_square,
+        lower_multiple     = lower_multiple,
+        upper_multiple     = upper_multiple )
+    return Weights( weights )
+end 
+
+
+function make_dataset()::DataFrame
+    dn = CSV.File("$(DATA_DIR)/national_censored.csv")|>DataFrame
+    dr = CSV.File("$(DATA_DIR)/red_censored.csv")|>DataFrame
+    dn.is_redwall .= false
+    dr.is_redwall .= true
+
+    dall = vcat(dn,dr)
+
+    CSV.write( "$(DATA_DIR)/national_censored.tab", dall; delim='\t')
+
+    function recode_ethnic( ethnic :: AbstractString ) :: String
+        return ethnic == "1. English, Welsh, Scottish, Northern Irish or British" ? "Ethnic British" : "Other Ethnic" 
+    end
+
+    function recode_party( party :: AbstractString ) :: String
+        return if party in ["Conservative Party"]
+            "Conservative"
+        elseif party in ["Green Party", "Plaid Cymru", "Scottish National Party"]
+            "Nat/Green"
+        elseif party in ["Labour Party"]
+            "Labour"
+        elseif party in ["Liberal Democrats"]
+            "LibDem"
+        elseif party in ["Other (please name below)", "Independent candidate","Brexit Party"]
+            "Other/Brexit"
+        else 
+            "No Vote/DK/Refused"
+        end
+    end
+
+    function recode_employment( employment :: AbstractString ) :: String
+        return if employment in [
+            "In full-time paid work (30 or more hours a week)"
+            "In irregular or occasional work"
+            "Self-employed"
+            "In part-time paid work (less than 30 hours a week)"]
+            "Working/SE Inc. Part-Time"
+        else
+            "Not Working, Inc. Retired/Caring/Student"
+        end
+    end
+
+    # needs to be done before renaming..
+    # dall.old_or_destitute = (dall."Q66.2" .>= 50) .| (dall."Q66.9_1" .>= 70)
+    dall.destitute = (dall."Q66.9_1" .>= 70)
+
+    create_one!( dall; label="basic_income", initialq="Q5.1_4", finalq="Q10.1_4", treatqs=["Q6.1_4","Q7.1_4","Q8.1_4","Q9.1_4"])
+    create_one!( dall; label="green_nd", initialq="Q11.1_4", finalq="Q16.1_4", treatqs=["Q12.1_4","Q13.1_4","Q14.1_4","Q15.1_4"])
+    create_one!( dall; label="utilities", initialq="Q17.1_4", finalq="Q22.1_4", treatqs=["Q18.1_4","Q19.1_4","Q20.1_4","Q21.1_4"])
+    create_one!( dall; label="health", initialq="Q23.1_4", finalq="Q28.1_4", treatqs=["Q24.1_4","Q25.1_4","Q26.1_4","Q27.1_4"])
+    create_one!( dall; label="childcare", initialq="Q29.1_4", finalq="Q34.1_4", treatqs=["Q30.1_4","Q31.1_4","Q32.1_4","Q33.1_4"])
+    create_one!( dall; label="education", initialq="Q35.1_4", finalq="Q40.1_4", treatqs=["Q36.1_4","Q37.1_4","Q38.1_4","Q39.1_4"])
+    create_one!( dall; label="housing", initialq="Q41.1_4", finalq="Q46.1_4", treatqs=["Q42.1_4","Q43.1_4","Q44.1_4","Q45.1_4"])
+    create_one!( dall; label="transport", initialq="Q47.1_4", finalq="Q52.1_4", treatqs=["Q48.1_4","Q49.1_4","Q50.1_4","Q51.1_4"])
+    create_one!( dall; label="democracy", initialq="Q53.1_4", finalq="Q58.1_4", treatqs=["Q54.1_4","Q55.1_4","Q56.1_4","Q57.1_4"])
+    create_one!( dall; label="tax", initialq="Q59.1_4", finalq="Q64.1_4", treatqs=["Q60.1_4","Q61.1_4","Q62.1_4","Q63.1_4"])
+
+    rename!( dall, RENAMES )
+    # dall = dall[dall.HH_Net_income_PA .> 0,:] # skip zeto incomes 
+    dall = dall[(.! ismissing.(dall.HH_Net_Income_PA )) .& (dall.HH_Net_Income_PA .> 0),:]
+
+    dall.HH_Net_Income_PA .= recode_income.( dall.HH_Net_Income_PA)
+    dall.ethnic_2 = recode_ethnic.( dall.Ethnic )
+    dall.last_election = recode_party.( dall.Party_Last_Election )
+    dall.next_election = recode_party.( dall.Party_Next_Election )
+    dall.employment_2 = recode_employment.(dall.Employment_Status)
+    dall.log_income = log.(dall.HH_Net_Income_PA)
+    dall.age_sq = dall.Age .^2
+    dall.Gender= convert.(String,dall.Gender)
+    dall.Owner_Occupier= convert.(String,dall.Owner_Occupier)
+    dall.General_Health= convert.(String,dall.General_Health)
+
+    dall.Little_interest_in_things = convert.(String,dall.Little_interest_in_things )
+    dall.age5 = dall.Age .÷ 5
+    dall.poorhealth = dall.General_Health .∈ (["Bad","Very bad"],)
+    dall.unsatisfied_with_income = dall.Satisfied_With_Income .∈ ( 
+        ["1. Completely dissatisfied","2. Mostly dissatisfied", "3. Somewhat dissatisfied]"], )
+    dall.not_managing_financially = dall.Managing_Financially .∈ ( 
+        ["5. Finding it very difficult", "4.\tFinding it quite difficult"], )
+    dall.down_the_ladder = dall.Ladder .<= 4
+    # rename!( dall, ["last_election"=>"Party Vote Last Election"])
+
+    #
+    # Dump modified data
+    #
+    dall.weight = reweight( dall )
+    CSV.write( joinpath( DATA_DIR, "national-w-created-vars.tab"), dall; delim='\t')
+    return dall
+end # make dataset
+
+
 outf = open( "tmp/red-wall-regressions.txt", "w")
-
-dn = CSV.File("$(DATA_DIR)/national_censored.csv")|>DataFrame
-dr = CSV.File("$(DATA_DIR)/red_censored.csv")|>DataFrame
-dn.is_redwall .= false
-dr.is_redwall .= true
-
-dall = vcat(dn,dr)
-
-CSV.write( "$(DATA_DIR)/national_censored.tab", dall; delim='\t')
-
-function recode_ethnic( ethnic :: AbstractString ) :: String
-    return ethnic == "1. English, Welsh, Scottish, Northern Irish or British" ? "Ethnic British" : "Other Ethnic" 
-end
-
-function recode_party( party :: AbstractString ) :: String
-    return if party in ["Conservative Party"]
-        "Conservative"
-    elseif party in ["Green Party", "Plaid Cymru", "Scottish National Party"]
-        "Nat/Green"
-    elseif party in ["Labour Party"]
-        "Labour"
-    elseif party in ["Liberal Democrats"]
-        "LibDem"
-    elseif party in ["Other (please name below)", "Independent candidate","Brexit Party"]
-        "Other/Brexit"
-    else 
-        "No Vote/DK/Refused"
-    end
-end
-
-function recode_employment( employment :: AbstractString ) :: String
-    return if employment in [
-        "In full-time paid work (30 or more hours a week)"
-        "In irregular or occasional work"
-        "Self-employed"
-        "In part-time paid work (less than 30 hours a week)"]
-        "Working/SE Inc. Part-Time"
-    else
-        "Not Working, Inc. Retired/Caring/Student"
-    end
-end
-
-# needs to be done before renaming..
-# dall.old_or_destitute = (dall."Q66.2" .>= 50) .| (dall."Q66.9_1" .>= 70)
-dall.destitute = (dall."Q66.9_1" .>= 70)
-
-create_one!( dall; label="basic_income", initialq="Q5.1_4", finalq="Q10.1_4", treatqs=["Q6.1_4","Q7.1_4","Q8.1_4","Q9.1_4"])
-create_one!( dall; label="green_nd", initialq="Q11.1_4", finalq="Q16.1_4", treatqs=["Q12.1_4","Q13.1_4","Q14.1_4","Q15.1_4"])
-create_one!( dall; label="utilities", initialq="Q17.1_4", finalq="Q22.1_4", treatqs=["Q18.1_4","Q19.1_4","Q20.1_4","Q21.1_4"])
-create_one!( dall; label="health", initialq="Q23.1_4", finalq="Q28.1_4", treatqs=["Q24.1_4","Q25.1_4","Q26.1_4","Q27.1_4"])
-create_one!( dall; label="childcare", initialq="Q29.1_4", finalq="Q34.1_4", treatqs=["Q30.1_4","Q31.1_4","Q32.1_4","Q33.1_4"])
-create_one!( dall; label="education", initialq="Q35.1_4", finalq="Q40.1_4", treatqs=["Q36.1_4","Q37.1_4","Q38.1_4","Q39.1_4"])
-create_one!( dall; label="housing", initialq="Q41.1_4", finalq="Q46.1_4", treatqs=["Q42.1_4","Q43.1_4","Q44.1_4","Q45.1_4"])
-create_one!( dall; label="transport", initialq="Q47.1_4", finalq="Q52.1_4", treatqs=["Q48.1_4","Q49.1_4","Q50.1_4","Q51.1_4"])
-create_one!( dall; label="democracy", initialq="Q53.1_4", finalq="Q58.1_4", treatqs=["Q54.1_4","Q55.1_4","Q56.1_4","Q57.1_4"])
-create_one!( dall; label="tax", initialq="Q59.1_4", finalq="Q64.1_4", treatqs=["Q60.1_4","Q61.1_4","Q62.1_4","Q63.1_4"])
-
-rename!( dall, RENAMES )
-# dall = dall[dall.HH_Net_income_PA .> 0,:] # skip zeto incomes 
-dall = dall[(.! ismissing.(dall.HH_Net_Income_PA )) .& (dall.HH_Net_Income_PA .> 0),:]
-
-dall.HH_Net_Income_PA .= recode_income.( dall.HH_Net_Income_PA)
-dall.ethnic_2 = recode_ethnic.( dall.Ethnic )
-dall.last_election = recode_party.( dall.Party_Last_Election )
-dall.employment_2 = recode_employment.(dall.Employment_Status)
-dall.log_income = log.(dall.HH_Net_Income_PA)
-dall.age_sq = dall.Age .^2
-dall.Gender= convert.(String,dall.Gender)
-dall.Owner_Occupier= convert.(String,dall.Owner_Occupier)
-dall.General_Health= convert.(String,dall.General_Health)
-
-dall.Little_interest_in_things = convert.(String,dall.Little_interest_in_things )
-dall.age5 = dall.Age .÷ 5
-dall.poorhealth = dall.General_Health .∈ (["Bad","Very bad"],)
-dall.unsatisfied_with_income = dall.Satisfied_With_Income .∈ ( 
-    ["1. Completely dissatisfied","2. Mostly dissatisfied", "3. Somewhat dissatisfied]"], )
-dall.not_managing_financially = dall.Managing_Financially .∈ ( 
-    ["5. Finding it very difficult", "4.\tFinding it quite difficult"], )
-dall.down_the_ladder = dall.Ladder .<= 4
-
-#
-# Dump modified data
-#
-CSV.write( joinpath( DATA_DIR, "national-w-created-vars.tab"), dall; delim='\t')
 
 close( outf )
 
@@ -243,7 +344,7 @@ close( outf )
 const POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
 
 
-function runregressions( mainvar :: Symbol )
+function runregressions( dall::DataFrame, mainvar :: Symbol )
     #
     # regressions: for each policy, before the explanation, do a big regression and a simple one and add them to a list
     # the convoluted `@eval(@formula( $(depvar)` bit just allows to sub in each dependent variable `$(depvar)`
@@ -311,11 +412,6 @@ function runregressions( mainvar :: Symbol )
     =#
 end
 
-for mainvar in MAIN_EXPLANVARS
-    runregressions( mainvar )
-end
-
-POLICIES 
 const POL_COLS = scale_color_manual( :blue,:red,:orange,:green,:grey,:purple )
 const BLANK = ggplot() + 
     theme( xticklabelsvisible = false, xgridvisible = false, yticklabelsvisible = false,
@@ -323,27 +419,88 @@ const BLANK = ggplot() +
         bottomspinevisible = false, topspinevisible = false, rightspinevisible = false, 
         leftspinevisible = false )
 
+function draw_pol_scat( scatter, title )
+    axis = (width = 1200, height = 800, title=title)
+    return draw(scatter, 
+        scales( Color=(; palette=[:blue,:red,:orange,:green,:grey,:purple] )),
+        axis=axis, 
+        legend=(; title="Party Vote Last Election"))
+end
 
-function draw_policies( dr::DataFrame, pol :: Symbol ) :: Tuple
+function draw_policies2( df::DataFrame, pol :: Symbol ) :: Tuple
+    policy = Symbol("$(pol)_pre")
+    label = pretty( pol )
+    title = "$(label) vs Preference for Democratic Reform (before treatment)"
+    ddf = data(df)
+    
+    spec1 = ddf * 
+        mapping( 
+            :democracy_pre=>"Democracy",
+            policy=>label ) * 
+        mapping(  color=:"Party Vote Last Election") *
+        visual(Scatter)
+        
+    layers = 
+        mapping( 
+            :democracy_pre=>"Democracy",
+            policy=>label ) +
+        linear() + 
+        mapping( color=:"Party Vote Last Election") 
+
+    spec2 = ddf * 
+        mapping( 
+            :democracy_pre=>"Democracy",
+            policy=>label ) * 
+        mapping(  color=:"Party Vote Last Election") *
+        (linear() + visual(Scatter)) # interval = nothing 
+
+    spec3 = ddf * 
+        mapping( 
+            :democracy_pre=>"Democracy",
+            policy=>label ) * 
+        mapping( layout=:"Party Vote Last Election") *
+        mapping( color=:"Party Vote Last Election") * 
+        visual(Scatter)
+
+    hist = ddf * mapping(policy, stack=:next_election, color=:next_election) * histogram( weight=weight )
+
+    s1 = draw_pol_scat( spec1, title )
+    println( "#1")
+    s2 = draw_pol_scat( spec2, title )
+    println( "#2")
+    s3 = draw_pol_scat( spec3, "" )
+    s1,s2,s3
+end
+
+function draw_policies( df::DataFrame, pol :: Symbol ) :: Tuple
     policy = Symbol("$(pol)_pre")
     label = pretty( pol )
     title = "$(label) vs Democratic Preference (before treatment)"
     # polcolours = parse.(Colorant,[])
     sp = aes( x=:democracy_pre, y=policy )
-    scatter = ggplot(dr, sp ) + 
+    scatter = ggplot( df, sp ) + 
         geom_point( @aes(color=last_election ), size=4 ) +
-        geom_smooth() +
+        geom_smooth(; span=0.75, degree=2, npoints=200) +
         labs(x = "Democracy", y = label, title=title ) +
         POL_COLS
-    democ = ggplot(dr) +
+    scatter2 = ggplot( df, sp ) + 
+        geom_point( @aes(color=last_election ), size=4 ) +
+        # geom_smooth() +
+        labs(x = "Democracy", y = label, title=title ) +
+        POL_COLS
+    println( "scatter ")
+    democ = ggplot( df) +
         geom_histogram( aes(:democracy_pre )) + 
         theme(xticklabelsvisible = false, xgridvisible = false)
-    polplot = ggplot(dr) +
+    println( "democ")
+    polplot = ggplot(df) +
         geom_histogram( aes( policy ), direction = :x) + 
         theme(yticklabelsvisible = false, ygridvisible = false)
-    p = democ + BLANK + scatter + polplot + 
-        plot_layout(ncol = 2, nrow = 2, widths = [2, 1], heights = [1, 2])
-    f = ggplot(dr, sp ) + 
+    println( "polplot")
+    p = democ + BLANK + polplot + scatter + polplot + 
+        plot_layout(ncol = 2, nrow = 2, widths = [3, 1], heights = [1, 2])
+    println( "p")
+    f = ggplot(df, sp ) + 
         geom_point(size=4) +
         # geom_smooth() +
         labs(x = "Democracy", y = label ) +
@@ -351,12 +508,20 @@ function draw_policies( dr::DataFrame, pol :: Symbol ) :: Tuple
     p, scatter, f
 end
 
+dall = make_dataset()
+
+#=
 for p in POLICIES 
-    title = pretty( string(p))
     if p !== :democracy 
-        threeplot, scatter, facet = draw_policies( dr, p )
+        threeplot, scatter, facet = draw_policies( dall, p )
+        println( p )
         ggsave( "tmp/actnow-$(p)-multi.svg", threeplot; scale=1,height=800, width=800)
         ggsave( scatter, "tmp/actnow-$(p)-scatter.svg" )
         ggsave( facet, "tmp/actnow-$(p)-facet.svg" )
     end
+end
+=#
+
+for mainvar in MAIN_EXPLANVARS
+    runregressions( dall, mainvar )
 end
