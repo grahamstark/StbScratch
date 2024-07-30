@@ -427,17 +427,26 @@ function draw_pol_scat( scatter, title )
         legend=(; title="Party Vote Last Election"))
 end
 
+function draw_density( density, title )
+    axis = (width = 1200, height = 800, title=title)
+    return draw(density; axis=axis )
+end
+
 function draw_policies2( df::DataFrame, pol :: Symbol ) :: Tuple
     policy = Symbol("$(pol)_pre")
-    label = pretty( pol )
+    label = "Preference for "*pretty( pol )
     title = "$(label) vs Preference for Democratic Reform (before treatment)"
+    vote_label = "Voting Intention (January 2024)"
+    # FIXME some neat way of doing this with mapping
+    # pol_w = Symbol("$(pol)_weighted")
+    # df[:,pol_w] = df[:,policy] .* df.weight
     ddf = data(df)
     
     spec1 = ddf * 
         mapping( 
-            :democracy_pre=>"Democracy",
+            :democracy_pre=>"Preference for Democratic Reform",
             policy=>label ) * 
-        mapping(  color=:"Party Vote Last Election") *
+        mapping(  color=:next_election=>vote_label) *
         visual(Scatter)
         
     layers = 
@@ -445,31 +454,45 @@ function draw_policies2( df::DataFrame, pol :: Symbol ) :: Tuple
             :democracy_pre=>"Democracy",
             policy=>label ) +
         linear() + 
-        mapping( color=:"Party Vote Last Election") 
+        mapping( color=:next_election=>vote_label) 
 
     spec2 = ddf * 
         mapping( 
             :democracy_pre=>"Democracy",
             policy=>label ) * 
-        mapping(  color=:"Party Vote Last Election") *
+        mapping(  color=:next_election=>vote_label) *
         (linear() + visual(Scatter)) # interval = nothing 
 
     spec3 = ddf * 
         mapping( 
             :democracy_pre=>"Democracy",
             policy=>label ) * 
-        mapping( layout=:"Party Vote Last Election") *
-        mapping( color=:"Party Vote Last Election") * 
-        visual(Scatter)
+        mapping( layout=:next_election=>vote_label) *
+        mapping( color=:next_election=>vote_label) * 
+        (linear() + visual(Scatter))
 
-    hist = ddf * mapping(policy, stack=:next_election, color=:next_election) * histogram( weight=weight )
-
+    # hist = ddf * mapping(pol_w, stack=:next_election, color=:next_election) * histogram(  )
+    #=
+    hist = ddf * 
+        mapping( policy=>label, weights=:weight ) *
+        histogram( direction=:x)
+        # AlgebraOfGraphics.histogram() # direction = :x ) #AlgebraOfGraphics.density(direction = :x)
+    =#
     s1 = draw_pol_scat( spec1, title )
     println( "#1")
     s2 = draw_pol_scat( spec2, title )
     println( "#2")
     s3 = draw_pol_scat( spec3, "" )
-    s1,s2,s3
+
+    f = Figure()
+    #=
+    # ax = Axis(f[1,1])
+    sf1 = f[1,1]
+    sf2 = f[1,2]
+    ag = draw!( sf1, spec1)
+    # xx = draw!( sf2, hist)
+    =#
+    s1,s2,s3 # ,hist,f
 end
 
 function draw_policies( df::DataFrame, pol :: Symbol ) :: Tuple
@@ -516,11 +539,23 @@ for p in POLICIES
         threeplot, scatter, facet = draw_policies( dall, p )
         println( p )
         ggsave( "tmp/actnow-$(p)-multi.svg", threeplot; scale=1,height=800, width=800)
-        ggsave( scatter, "tmp/actnow-$(p)-scatter.svg" )
-        ggsave( facet, "tmp/actnow-$(p)-facet.svg" )
+        ggsave( scatter, "tmp/actnow$(p)-scatter.svg" )
+        ggsave( facet, "tmp/actnow$(p)-facet.svg" )
     end
 end
 =#
+
+for p in POLICIES 
+    if p !== :democracy 
+        cp1,cp2,cp3 = draw_policies2( dall, p )
+        println( p )
+        save( "tmp/actnow-2-$(p)-scatter.svg", cp1 )
+        save( "tmp/actnow-2-$(p)-scatter-linear.svg", cp2 )
+        save( "tmp/actnow-2-$(p)-facet.svg", cp3 )
+    end
+end
+
+
 
 for mainvar in MAIN_EXPLANVARS
     runregressions( dall, mainvar )
