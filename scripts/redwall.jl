@@ -149,7 +149,7 @@ end
 function recode_income( inc )
     return if ismissing( inc )
         missing
-    elseif inc < 1000
+    elseif inc < 100
       inc * 1000
     else
      inc
