@@ -26,40 +26,8 @@ const MAIN_EXPLANVARS = [
     :down_the_ladder,
     :not_managing_financially]
 
-#=
-Q66.6 # HH_Net_Income_PA
-Q66.8 # Owner_Occupier
-Q66.9_1 # At_Risk_of_Destitution
-Q66.10  # "Managing_Financially"
-Q66.11  # Satisfied_With_Income
-Q66.12  # Ladder
-Q66.13  # General_Health
-=#
-
-form( v :: Missing, i, j ) = ""
-form( v :: AbstractString, i, j ) = v
-form( v :: Integer, i, j ) = "$v"
-form( v :: Number, i, j ) = Format.format(v; precision=2 )
-
-
-function corrmatrix( df, keys ) :: DataFrame
-    corrtars = Symbol.(string.(keys).*"_pre")
-    n = length(keys)
-    corrs = cor(Matrix(dr[:,corrtars]))
-    corrs = convert(Array{Union{Float64,Missing}},corrs)    
-    println(corrs)
-    for r in 1:n
-        for c in (r+1):n
-            corrs[r,c] = missing
-        end
-    end
-    labels = pretty.(keys)
-    df = DataFrame( corrs, labels )
-    df." " = labels
-    df
-end
-
-RENAMES = Dict(
+const POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
+const RENAMES = Dict(
     "Q65.2_1"=>"Support_All_Policies",
     "Q65.3_1"=>"Any_Argument",
     "Q66.2"=>"Age",
@@ -113,6 +81,44 @@ RENAMES = Dict(
     "Q66.24_5"=>"Politicians_Want_To_Make_Things_Better",
     "Q66.24_6"=>"Shouldnt_Rely_On_Government" )
 
+#=
+Q66.6 # HH_Net_Income_PA
+Q66.8 # Owner_Occupier
+Q66.9_1 # At_Risk_of_Destitution
+Q66.10  # "Managing_Financially"
+Q66.11  # Satisfied_With_Income
+Q66.12  # Ladder
+Q66.13  # General_Health
+=#
+
+#
+# Formatting routines for PrettyTables
+#
+form( v :: Missing, i, j ) = ""
+form( v :: AbstractString, i, j ) = v
+form( v :: Integer, i, j ) = "$v"
+form( v :: Number, i, j ) = Format.format(v; precision=2 )
+
+"""
+Correlation matrix for the policies
+"""
+function corrmatrix( df, keys, pre_or_post = "pre" ) :: DataFrame
+    corrtars = Symbol.(string.(keys).*pre_or_post)
+    n = length(keys)
+    corrs = cor(Matrix(dr[:,corrtars]))
+    corrs = convert(Array{Union{Float64,Missing}},corrs)    
+    println(corrs)
+    for r in 1:n
+        for c in (r+1):n
+            corrs[r,c] = missing
+        end
+    end
+    labels = pretty.(keys)
+    df = DataFrame( corrs, labels )
+    df." " = labels
+    df
+end
+
 """
 This convoluted function creates a bunch or binary variables in the dataframe `dall` for some question and treatments.
     @param `labels` - for readable variable names e.g. "basic_income"
@@ -129,33 +135,40 @@ function create_one!(
     treatqs :: Vector{String} )
     dall[:,"$(label)_treat_absgains_v"] = dall[:,"$(treatqs[1])"]
     
-    # identify subsets wo
+    # identify subsets who heard the absolute/relative/security arguments
     dall[:,"$(label)_treat_absgains"] = ( .! ismissing.( dall[:,"$(treatqs[1])"] ) )
     dall[:,"$(label)_treat_relgains"] = ( .! ismissing.( dall[:,"$(treatqs[2])"] ) )
     dall[:,"$(label)_treat_security"] = ( .! ismissing.( dall[:,"$(treatqs[3])"] ) )
     dall[:,"$(label)_treat_other_argument"] = ( .! ismissing.( dall[:,"$(treatqs[4])"] ) )
     rename!( dall, Dict(initialq => "$(label)_pre", (finalq => "$(label)_post" )))
+    # change after hearing argument
     dall[:,"$(label)_change"] = dall[:,"$(label)_post"] - dall[:,"$(label)_pre"]
     dall[:,"$(label)_strong_approve_pre"] = dall[:,"$(label)_pre"] .>= 70
     dall[:,"$(label)_strong_approve_post"] = dall[:,"$(label)_post"] .>= 70
     
+    # interactions of fear of destitution and the 4 different arguments
     dall[:,"$(label)_treat_absgains_destitute"] = dall.destitute .* dall[:,"$(label)_treat_absgains"]
     dall[:,"$(label)_treat_relgains_destitute"] = dall.destitute .* dall[:,"$(label)_treat_relgains"]
     dall[:,"$(label)_treat_security_destitute"] = dall.destitute .* dall[:,"$(label)_treat_security"]
     dall[:,"$(label)_treat_other_argument_destitute"] = dall.destitute .* dall[:,"$(label)_treat_other_argument"]
 end
 
-
+"""
+Hacky fix of incomew were some people seem to have entered in £000s rather than £s
+"""
 function recode_income( inc )
     return if ismissing( inc )
         missing
     elseif inc < 100
-      inc * 1000
+        inc * 1000
     else
-     inc
+        inc
   end
 end
 
+#
+# Weighting - target set. See `.ods` spreadsheet in `data`.
+#
 const TARGET_SET = [
     5464261.0,	#	m18-30 1
     8576471,	#	m31-50 2
@@ -227,13 +240,14 @@ function make_target_set( dall :: DataFrame ) :: Tuple
     m, initial_weights
 end
 
+"""
+Create weights based on voting intention and age/sex groups.
+"""
 function reweight( 
     dall :: DataFrame, 
-    lower_multiple = 0.25, 
-    upper_multiple = 4.80  )::AbstractWeights
+    lower_multiple = 0.50, #0.25, 
+    upper_multiple = 3.0, # 4.80  )::AbstractWeights
     data, initial_weights = make_target_set( dall )
-     # any smaller min and d_and_s_constrained fails on this dataset
-    
     weights = do_reweighting(
         data               = data,
         initial_weights    = initial_weights,
@@ -336,13 +350,6 @@ function make_dataset()::DataFrame
 end # make dataset
 
 
-outf = open( "tmp/red-wall-regressions.txt", "w")
-
-close( outf )
-
-
-const POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
-
 
 function runregressions( dall::DataFrame, mainvar :: Symbol )
     #
@@ -354,7 +361,7 @@ function runregressions( dall::DataFrame, mainvar :: Symbol )
     for policy in POLICIES
         depvar = Symbol( "$(policy)_pre")
         reg = lm( @eval(@formula( $(depvar) ~ 
-            Age + Age^2 + last_election+ ethnic_2 + employment_2 + 
+            Age + Age^2 + last_election + ethnic_2 + employment_2 + 
             log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender + 
             $(mainvar))), dall )
         push!( regs, reg )
@@ -419,6 +426,9 @@ const BLANK = ggplot() +
         bottomspinevisible = false, topspinevisible = false, rightspinevisible = false, 
         leftspinevisible = false )
 
+"""
+Draw our scatter plots with the parties colo[u]red in.
+"""
 function draw_pol_scat( scatter, title )
     axis = (width = 1200, height = 800, title=title)
     return draw(scatter, 
@@ -432,10 +442,15 @@ function draw_density( density, title )
     return draw(density; axis=axis )
 end
 
-function draw_policies2( df::DataFrame, pol :: Symbol ) :: Tuple
-    policy = Symbol("$(pol)_pre")
-    label = "Preference for "*pretty( pol )
-    title = "$(label) vs Preference for Democratic Reform (before treatment)"
+"""
+Drawing all our charts using the marginally less mad AlgebraOfGraphics lib.
+"""
+function draw_policies2( df::DataFrame, pol1 :: Symbol, pol2 :: Symbol ) :: Tuple
+    policy1 = Symbol("$(pol1)_pre")
+    policy2 = Symbol("$(pol2)_pre")
+    label1 = "Preference for "*pretty( pol1 )
+    label1 = "Preference for "*pretty( pol2 )
+    title = "$(label1) vs $(label2) $ (before treatment)"
     vote_label = "Voting Intention (January 2024)"
     # FIXME some neat way of doing this with mapping
     # pol_w = Symbol("$(pol)_weighted")
@@ -444,32 +459,42 @@ function draw_policies2( df::DataFrame, pol :: Symbol ) :: Tuple
     
     spec1 = ddf * 
         mapping( 
-            :democracy_pre=>"Preference for Democratic Reform",
-            policy=>label ) * 
+            policy1=>label1, #:democracy_pre=>"Preference for Democratic Reform",
+            policy2=>label2 ) * 
         mapping(  color=:next_election=>vote_label) *
         visual(Scatter)
         
     layers = 
         mapping( 
-            :democracy_pre=>"Democracy",
-            policy=>label ) +
+            policy1=>label1, #:democracy_pre=>"Democracy",
+            policy2=>label2 ) +
         linear() + 
         mapping( color=:next_election=>vote_label) 
 
     spec2 = ddf * 
         mapping( 
-            :democracy_pre=>"Democracy",
-            policy=>label ) * 
+            policy1=>label1, #:democracy_pre=>"Democracy",
+            policy2=>label2 ) * 
         mapping(  color=:next_election=>vote_label) *
         (linear() + visual(Scatter)) # interval = nothing 
 
     spec3 = ddf * 
         mapping( 
-            :democracy_pre=>"Democracy",
-            policy=>label ) * 
+            policy1=>label1, #:democracy_pre=>"Democracy",
+            policy2=>label2 ) * 
         mapping( layout=:next_election=>vote_label) *
         mapping( color=:next_election=>vote_label) * 
         (linear() + visual(Scatter))
+
+    s1 = draw_pol_scat( spec1, title )
+    println( "#1")
+    s2 = draw_pol_scat( spec2, title )
+    println( "#2")
+    s3 = draw_pol_scat( spec3, "" )
+
+    f = Figure()
+    s1,s2,s3 
+end
 
     # hist = ddf * mapping(pol_w, stack=:next_election, color=:next_election) * histogram(  )
     #=
@@ -478,23 +503,10 @@ function draw_policies2( df::DataFrame, pol :: Symbol ) :: Tuple
         histogram( direction=:x)
         # AlgebraOfGraphics.histogram() # direction = :x ) #AlgebraOfGraphics.density(direction = :x)
     =#
-    s1 = draw_pol_scat( spec1, title )
-    println( "#1")
-    s2 = draw_pol_scat( spec2, title )
-    println( "#2")
-    s3 = draw_pol_scat( spec3, "" )
 
-    f = Figure()
-    #=
-    # ax = Axis(f[1,1])
-    sf1 = f[1,1]
-    sf2 = f[1,2]
-    ag = draw!( sf1, spec1)
-    # xx = draw!( sf2, hist)
-    =#
-    s1,s2,s3 # ,hist,f
-end
-
+"""
+Buggy version using Tidyverse
+"""
 function draw_policies( df::DataFrame, pol :: Symbol ) :: Tuple
     policy = Symbol("$(pol)_pre")
     label = pretty( pol )
@@ -531,8 +543,6 @@ function draw_policies( df::DataFrame, pol :: Symbol ) :: Tuple
     p, scatter, f
 end
 
-dall = make_dataset()
-
 #=
 for p in POLICIES 
     if p !== :democracy 
@@ -545,18 +555,25 @@ for p in POLICIES
 end
 =#
 
-for p in POLICIES 
-    if p !== :democracy 
-        cp1,cp2,cp3 = draw_policies2( dall, p )
-        println( p )
-        save( "tmp/actnow-2-$(p)-scatter.svg", cp1 )
-        save( "tmp/actnow-2-$(p)-scatter-linear.svg", cp2 )
-        save( "tmp/actnow-2-$(p)-facet.svg", cp3 )
+function make_all_graphs( dall::DataFrame )
+    for p1 in POLICIES 
+        for p2 in POLICIES 
+            if p1 !== p2 
+                cp1,cp2,cp3 = draw_policies2( dall, p1, p2 )
+                println( "$p1  $p2" )
+                save( "tmp/actnow-$(p1)-$(p2)-scatter.svg", cp1 )
+                # save( "tmp/actnow-$(p1)-$(p2)-scatter-linear.svg", cp2 )
+                save( "tmp/actnow-$(p1)-$(p2)-facet.svg", cp3 )
+        end
     end
 end
 
-
-
-for mainvar in MAIN_EXPLANVARS
-    runregressions( dall, mainvar )
+function run_regressions( dall :: DataFrame )
+    for mainvar in MAIN_EXPLANVARS
+        runregressions( dall, mainvar )
+    end
 end
+
+# dall = make_dataset()
+
+dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
