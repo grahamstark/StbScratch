@@ -840,11 +840,11 @@ t = pretty_table( d.correlations;
            table_class="table table-sm table-striped", 
            backend = Val(:html))
 
-t = pretty_table( corr; 
+t = pretty_table( d.correlations; 
     formatters=( form ), 
     backend = backend = Val(:markdown))
 
-t = pretty_table( corr; 
+t = pretty_table( d.correlations; 
     formatters=( form ), 
     backend = backend = Val(:latex))
 =#
