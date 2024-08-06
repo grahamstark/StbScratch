@@ -29,6 +29,9 @@ const MAIN_EXPLANDICT = Dict([
 
 const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 
+
+
+
 const POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
 const RENAMES = Dict(
     "Q65.2_1"=>"Support_All_Policies",
@@ -84,6 +87,46 @@ const RENAMES = Dict(
     "Q66.24_5"=>"Politicians_Want_To_Make_Things_Better",
     "Q66.24_6"=>"Shouldnt_Rely_On_Government" )
 
+const SUMMARY_VARS = ["Age",
+    "Gender",
+    "Gender_Other",
+    "Ethnic",
+    "Ethnic_White_Other",
+    "Ethnic_Mixed_Other",
+    "Ethnic_Asian_Other",
+    "Ethnic_Black_Other",
+    "Ethnic_Other_Other", # check all these for any entry
+    "Postcode4",
+    "HH_Net_Income_PA",
+    "Employment_Status",
+    "Employment_Status_Other",
+    "Owner_Occupier",
+    "At_Risk_of_Destitution",
+    "Managing_Financially",
+    "Satisfied_With_Income",
+    "Ladder",
+    "General_Health",
+    "Little_interest_in_things",
+    "Depressed",
+    "Trouble_Sleeping",
+    "No_Energy",
+    "Poor_Appetite",
+    "Feeling_Failure",
+    "Trouble_Concentrating",
+    "More_Restless_Than_Usual",
+    "Anxious",
+    "Uncontrolled_Worry",
+    "Worrying_To_Much",
+    "Trouble_Relaxing",
+    "Restless_Cant_Sit_Still",
+    "Easily_Annoyed",
+    "Afraid",
+    "Think_About_Future",
+    "In_Control_Of_Life",
+    "Life_Satisfaction",
+    "Change_in_circumstance",
+    "Left_Right"]
+    
 #=
 Q66.6 # HH_Net_Income_PA
 Q66.8 # Owner_Occupier
@@ -105,10 +148,10 @@ form( v :: Number, i, j ) = Format.format(v; precision=2 )
 """
 Correlation matrix for the policies
 """
-function corrmatrix( df, keys, pre_or_post = "pre" ) :: DataFrame
+function corrmatrix( df, keys, pre_or_post = "_pre" ) :: DataFrame
     corrtars = Symbol.(string.(keys).*pre_or_post)
     n = length(keys)
-    corrs = cor(Matrix(dr[:,corrtars]))
+    corrs = cor(Matrix(df[:,corrtars]))
     corrs = convert(Array{Union{Float64,Missing}},corrs)    
     println(corrs)
     for r in 1:n
@@ -121,6 +164,7 @@ function corrmatrix( df, keys, pre_or_post = "pre" ) :: DataFrame
     df." " = labels
     df
 end
+
 
 """
 This convoluted function creates a bunch or binary variables in the dataframe `dall` for some question and treatments.
@@ -731,6 +775,76 @@ function run_regressions( dall :: DataFrame )
     end
 end
 
+function summarystats( dall :: DataFrame ) :: NamedTuple
+    n = 100
+    df = DataFrame( name = fill("",n), 
+        mean_pre=zeros(n), 
+        median_pre=zeros(n), 
+        mean_post=zeros(n), 
+        median_post=zeros(n), 
+        std = zeros(n) )
+    i = 0
+    w = dall.probability_weight
+    plots = Dict()
+    hists = Dict()
+    for p in POLICIES 
+        i += 1
+        pp = Symbol("$(p)_pre")
+        v = dall[!,pp]
+        hs = fit(Histogram, v, w )
+        hsp = plot( hs )
+        plots[p] = hsp
+        hists[p] = hs
+        df.name[i] = pretty(p)
+        df.mean_pre[i] = mean( v, w )
+        df.std[i] = std( v, w )
+        df.median_pre[i] = median( v, w )
+        pp = Symbol("$(p)_post")
+        v = dall[!,pp]        
+        df.mean_post[i] = mean( v, w )        
+        df.median_post[i] = median( v, w )
+    end
+    println( "x")
+    for p in SUMMARY_VARS
+        v = dall[!,Symbol(p)]
+        if eltype( v ) <: Number
+            i += 1
+            hs = fit(Histogram, v, w )
+            hsp = plot( hs )
+            plots[p] = hsp
+            hists[p] = hs
+            df.name[i] = pretty(p)
+            df.mean_pre[i] = mean( v, w )
+            df.median_pre[i] = median( v, w )
+            df.std[i] = std( v, w )
+        else
+            c = countmap( v, w )
+            hists[p] = c
+            barc = data( dall ) * frequency() * mapping(Symbol(p))
+            plots[p] = draw(barc)
+        end
+    end
+    correlations = corrmatrix( dall, POLICIES )
+    (; df = df[1:i,:], plots, hists, correlations )
+end
+
 # dall = make_dataset()
 
 dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
+dall.weight = Weights(dall.weight)
+dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
+
+#=
+t = pretty_table( d.correlations; 
+           formatters=( form ), 
+           table_class="table table-sm table-striped", 
+           backend = Val(:html))
+
+t = pretty_table( corr; 
+    formatters=( form ), 
+    backend = backend = Val(:markdown))
+
+t = pretty_table( corr; 
+    formatters=( form ), 
+    backend = backend = Val(:latex))
+=#
