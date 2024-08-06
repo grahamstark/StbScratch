@@ -2,6 +2,7 @@
 # 
 #
 using AlgebraOfGraphics,
+    CairoMakie,
     CategoricalArrays,
     ColorSchemes,
     CSV,
@@ -18,13 +19,15 @@ using .Utils
 
 DATA_DIR="/mnt/data/ActNow/Surveys/live/"
 
-const MAIN_EXPLANVARS = [
-    :destitute, 
-    :poorhealth,
-    :unsatisfied_with_income,
-    :Owner_Occupier, 
-    :down_the_ladder,
-    :not_managing_financially]
+const MAIN_EXPLANDICT = Dict([
+    "destitute"=>"At Risk Of Destitution", 
+    "poorhealth" => "In Poor Health",
+    "unsatisfied_with_income" => "Unsatisfied with Income",
+    "Owner_Occupier" => "Owner Occupier, inc. with a Mortgage", 
+    "down_the_ladder" => "Low Life Satisfaction (Life Ladder 1..4)",
+    "not_managing_financially" => "Not Managing Well Financially"])
+
+const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 
 const POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
 const RENAMES = Dict(
@@ -242,11 +245,12 @@ end
 
 """
 Create weights based on voting intention and age/sex groups.
+NOTE: 0.6-2.8 are the closed weights I can find that converge using constrained_chi_square.
 """
 function reweight( 
     dall :: DataFrame, 
-    lower_multiple = 0.50, #0.25, 
-    upper_multiple = 3.0, # 4.80  )::AbstractWeights
+    lower_multiple = 0.60, 
+    upper_multiple = 2.8 )::AbstractWeights 
     data, initial_weights = make_target_set( dall )
     weights = do_reweighting(
         data               = data,
@@ -349,9 +353,30 @@ function make_dataset()::DataFrame
     return dall
 end # make dataset
 
+function make_labels()::Dict{String,String}
+    d = Dict{String,String}()
+    for policy in POLICIES
+        pp = pretty( policy )
+        d["$(policy)_change"] = "$pp"
+        d["$(policy)_pre"] = "$pp"
+        d["$(policy)_post"] = "$pp"
+        d["$(policy)_treat_relgains"] = "Shown Relative Gains Argument"
+        d["$(policy)_treat_security"] = "Shown Security Argument"
+        d["$(policy)_treat_absgains"] = "Shown Absolute Gains Argument"
+        d["$(policy)_treat_other_argument"] = "Shown Flourishing Argument"
+    end
+    d["is_redwall"] = "From Redwall Constituency"
+    # d["destitute"] = "At Risk of Destitution"
+    d["log(HH_Net_Income_PA)"] = "Log of household annual net income"
+    d["ethnic_2: Other Ethnic"] = "Not Ethnically British"
+    d["Gender: In another way (please type in below)"] = "Other Gender/Gender not specified"
+    d["employment_2: Working/SE Inc. Part-Time"] = "Working or Self Employed (inc. part-time)"
+    return merge(d, MAIN_EXPLANDICT )
+end
 
 
-function runregressions( dall::DataFrame, mainvar :: Symbol )
+
+function run_regressions( dall::DataFrame, mainvar :: Symbol )
     #
     # regressions: for each policy, before the explanation, do a big regression and a simple one and add them to a list
     # the convoluted `@eval(@formula( $(depvar)` bit just allows to sub in each dependent variable `$(depvar)`
@@ -361,7 +386,7 @@ function runregressions( dall::DataFrame, mainvar :: Symbol )
     for policy in POLICIES
         depvar = Symbol( "$(policy)_pre")
         reg = lm( @eval(@formula( $(depvar) ~ 
-            Age + Age^2 + last_election + ethnic_2 + employment_2 + 
+            Age + Age^2 + next_election + ethnic_2 + employment_2 + 
             log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender + 
             $(mainvar))), dall )
         push!( regs, reg )
@@ -380,21 +405,40 @@ function runregressions( dall::DataFrame, mainvar :: Symbol )
         absgains =Symbol( "$(policy)_treat_absgains" )
         relflourish = 
             Symbol( "$(policy)_treat_other_argument" )
+        #=
         reg = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relsec) + $(relflourish) + 
             $(absgains)*$(mainvar) + $(relgains)*$(mainvar) + $(relsec)*$(mainvar) + 
             $(relflourish)*$(mainvar) )), dall )
+        =#
+        reg = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relflourish) + $(relsec) + $(mainvar))), dall )
+            # $(absgains)*$(mainvar) + $(relgains)*$(mainvar) + $(relsec)*$(mainvar) + 
+            # $(relflourish)*$(mainvar) )), dall )
         push!( diffregs, reg )
     end 
 
-    regtable(regs[1:5]...;file="tmp/actnow-$(mainvar)-ols-1-5.html",stat_below = false, render=HtmlTable())
-    regtable(regs[6:10]...;file="tmp/actnow-$(mainvar)-ols-6-10.html",stat_below = false, render=HtmlTable())
+    labels = make_labels()
+    regtable(regs...;file="tmp/actnow-$(mainvar)-ols.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/actnow-simple-$(mainvar)-ols.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(diffregs...;file="tmp/actnow-change-$(mainvar)-ols.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(regs...;file="tmp/actnow-$(mainvar)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.tex",number_regressions=false, stat_below = false, render=LatexTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.tex",number_regressions=false, stat_below = false, render=LatexTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.tex",number_regressions=false, stat_below = false, render=LatexTable(), labels=labels)
 
-    regtable(simpleregs[1:5]...;file="tmp/actnow-simple-$(mainvar)-ols-1-5.html",stat_below = false, render=HtmlTable())
-    regtable(simpleregs[6:10]...;file="tmp/actnow-simple-$(mainvar)-ols-6-10.html",stat_below = false, render=HtmlTable())
-
-    regtable(diffregs[1:5]...;file="tmp/actnow-change-$(mainvar)-ols-1-5.html",stat_below = false, render=HtmlTable())
-    regtable(diffregs[6:10]...;file="tmp/actnow-change-$(mainvar)-ols-6-10.html",stat_below = false, render=HtmlTable())
-
+    #=
+    regtable(regs[1:5]...;file="tmp/actnow-$(mainvar)-ols-1-5.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(regs[6:10]...;file="tmp/actnow-$(mainvar)-ols-6-10.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
+    =#
+    #=
+    regtable(simpleregs[1:5]...;file="tmp/actnow-simple-$(mainvar)-ols-1-5.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(simpleregs[6:10]...;file="tmp/actnow-simple-$(mainvar)-ols-6-10.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
+    =#
+    #=
+    regtable(diffregs[1:5]...;file="tmp/actnow-change-$(mainvar)-ols-1-5.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(diffregs[6:10]...;file="tmp/actnow-change-$(mainvar)-ols-6-10.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
+    =#
     # v = glm( @formula( basic_income_strong_approve_pre ~ Age + Age^2 + Party_Last_Election+ Ethnic + Employment_Status + log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender ), dall, Binomial(), ProbitLink() )
     #=
     for policy in POLICIES
@@ -419,12 +463,100 @@ function runregressions( dall::DataFrame, mainvar :: Symbol )
     =#
 end
 
+function edit_table( io, tablename )
+    lines = readlines(tablename)
+    table = lines[15:end]
+    insert!(table, 1, "<table class='table table-sm table-striped'>")
+    for t in table
+        t = replace(t, r"<td .*?style=.*?>(.*?)</td>" => s"<th>\1</th>")
+        println( io, t)
+    end
+end
+
+function make_big_file()
+    io = open( "tmp/all_results.html", "w")
+    header = """
+    <!DOCTYPE html>
+    <html>
+    <title>Act Now Main Regression Library</title>
+    <link rel="stylesheet" href="css/bisite-bootstrap.css"/>
+    <body>
+    <title>
+        <h1>Act Now Main Regression Library</h1>
+    </title>
+    """
+    footer = """
+    <footer>
+
+    </footer>
+    </body>
+    </html>
+    """
+    println(io, header)
+
+    for (mainvar,exvar) in MAIN_EXPLANDICT
+        # exvar = MAIN_EXPLANDICT[Symbol(mainvar)]
+        notes1 = """
+        <p>
+        Results are relative to:
+        </p>
+        <ul>
+            <li>vote next election: Conservative;</li>
+            <li>Not Working;</li>
+            <li>Female;</li>
+            <li><strong>Not</strong> $exvar</li>
+        </ul>
+        """
+        notes2 = """
+        Results are Relative to:
+        <ul>
+            <li>Shown Absolute Gains Argument;</li>
+            <li><strong>Not</strong> $exvar.</li>
+        </ul>
+        """    
+        println( io, "<section>")
+        println( io, "<h2>Regressions - Main Explanatory Variable: $exvar </h2>")
+        println( io, "<h3>Popularity of Each Policy: 1) Full Regression</h3>")
+        fn = "tmp/actnow-$(mainvar)-ols.html"
+        edit_table( io, fn )
+        fnl = "regressions/actnow-$(mainvar)-ols"
+        println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
+        println( io, notes1 )
+        #
+        println( io, "<h3>Popularity of Each Policy: 2): Short Regressions</h3>")
+        fn = "tmp/actnow-simple-$(mainvar)-ols.html"
+        edit_table( io, fn )
+        fnl = "regressions/actnow-simple-$(mainvar)-ols"
+        println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
+        #
+        println( io, "<h3>Change in Popularity Of Each Policy: By Argument</h3>")
+        fn = "tmp/actnow-change-$(mainvar)-ols.html"
+        edit_table( io, fn )    
+        println(io, notes2 )    
+        fnl = "regressions/actnow-change-$(mainvar)-ols"
+        println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
+        println( io, "</section>")
+    end
+    println(io, "<section>")
+    println( io, "<h3>Image Gallery</h3>")
+    lines = readlines("tmp/image-index.html")
+    for l in lines
+        println( io, l )
+    end
+    println(io,"</section>")
+    println( io, footer )
+    close(io)
+end
+
 const POL_COLS = scale_color_manual( :blue,:red,:orange,:green,:grey,:purple )
+
+#=
 const BLANK = ggplot() + 
     theme( xticklabelsvisible = false, xgridvisible = false, yticklabelsvisible = false,
         ygridvisible = false, xtickcolor = :transparent, ytickcolor = :transparent, 
         bottomspinevisible = false, topspinevisible = false, rightspinevisible = false, 
         leftspinevisible = false )
+=#
 
 """
 Draw our scatter plots with the parties colo[u]red in.
@@ -449,8 +581,8 @@ function draw_policies2( df::DataFrame, pol1 :: Symbol, pol2 :: Symbol ) :: Tupl
     policy1 = Symbol("$(pol1)_pre")
     policy2 = Symbol("$(pol2)_pre")
     label1 = "Preference for "*pretty( pol1 )
-    label1 = "Preference for "*pretty( pol2 )
-    title = "$(label1) vs $(label2) $ (before treatment)"
+    label2 = "Preference for "*pretty( pol2 )
+    title = "$(label1) vs $(label2) (before treatment)"
     vote_label = "Voting Intention (January 2024)"
     # FIXME some neat way of doing this with mapping
     # pol_w = Symbol("$(pol)_weighted")
@@ -463,20 +595,22 @@ function draw_policies2( df::DataFrame, pol1 :: Symbol, pol2 :: Symbol ) :: Tupl
             policy2=>label2 ) * 
         mapping(  color=:next_election=>vote_label) *
         visual(Scatter)
-        
+    
+    #=
     layers = 
         mapping( 
             policy1=>label1, #:democracy_pre=>"Democracy",
             policy2=>label2 ) +
         linear() + 
         mapping( color=:next_election=>vote_label) 
+    =#
 
     spec2 = ddf * 
         mapping( 
             policy1=>label1, #:democracy_pre=>"Democracy",
             policy2=>label2 ) * 
         mapping(  color=:next_election=>vote_label) *
-        (linear() + visual(Scatter)) # interval = nothing 
+        (visual(Scatter) + linear(interval = nothing)) # interval = nothing 
 
     spec3 = ddf * 
         mapping( 
@@ -507,6 +641,7 @@ end
 """
 Buggy version using Tidyverse
 """
+#=
 function draw_policies( df::DataFrame, pol :: Symbol ) :: Tuple
     policy = Symbol("$(pol)_pre")
     label = pretty( pol )
@@ -542,6 +677,7 @@ function draw_policies( df::DataFrame, pol :: Symbol ) :: Tuple
         facet_wrap( :last_election ) 
     p, scatter, f
 end
+=#
 
 #=
 for p in POLICIES 
@@ -556,16 +692,37 @@ end
 =#
 
 function make_all_graphs( dall::DataFrame )
+    io = open( "tmp/image-index.html","w")
     for p1 in POLICIES 
+        println( io, "<section>")
+        pp1 = pretty( p1 )
+        println( io, "<h3>$pp1</h3>" )
+        println( io, "<table class='table'>")
+        println( io, "<thead></thead><tbody>")
         for p2 in POLICIES 
+            pp2 = pretty( p2 )
             if p1 !== p2 
                 cp1,cp2,cp3 = draw_policies2( dall, p1, p2 )
                 println( "$p1  $p2" )
-                save( "tmp/actnow-$(p1)-$(p2)-scatter.svg", cp1 )
-                # save( "tmp/actnow-$(p1)-$(p2)-scatter-linear.svg", cp2 )
-                save( "tmp/actnow-$(p1)-$(p2)-facet.svg", cp3 )
+                save( "tmp/img/actnow-$(p1)-$(p2)-scatter.svg", cp1 )
+                save( "tmp/img/actnow-$(p1)-$(p2)-scatter-linear.svg", cp2 )
+                save( "tmp/img/actnow-$(p1)-$(p2)-facet.svg", cp3 )
+                save( "tmp/img/actnow-$(p1)-$(p2)-scatter.png", cp1 )
+                save( "tmp/img/actnow-$(p1)-$(p2)-scatter-linear.png", cp2 )
+                save( "tmp/img/actnow-$(p1)-$(p2)-facet.png", cp3 )
+                println( io, "<tr><th>Vs: $pp2</th>")
+                println( io, "<td><img src='img/actnow-$(p1)-$(p2)-scatter.svg' width='300' height='300' class='img-thumbnail' alt='...'/></td>")
+                println( io, "<td>Combined Scatter Plot</td><td><a href='img/actnow-$(p1)-$(p2)-scatter.png'>PNG</a><td><a href='img/actnow-$(p1)-$(p2)-scatter.svg'>SVG</a> </td>")
+                println( io, "<td>Combined Scatter Plot With Regressions</td><td><a href='img/actnow-$(p1)-$(p2)-scatter-linear.png'>PNG</a></td><td><a href='img/actnow-$(p1)-$(p2)-scatter-linear.svg'>SVG</a></td>")
+                println( io, "<td>Facet Plot With Regression Lines</a></td><td><a href='img/actnow-$(p1)-$(p2)-facet.png'>PNG</a></td><td><a href='img/actnow-$(p1)-$(p2)-facet.svg'>SVG</a></td>")
+                println( io, "</tr>")
+            end
+            println( io, "</tr>")
         end
+        println( io, "</tbody></table>")
+        println( io, "</section>")
     end
+    close(io)
 end
 
 function run_regressions( dall :: DataFrame )
