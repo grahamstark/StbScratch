@@ -143,7 +143,7 @@ Q66.13  # General_Health
 form( v :: Missing, i, j ) = ""
 form( v :: AbstractString, i, j ) = v
 form( v :: Integer, i, j ) = "$v"
-form( v :: Number, i, j ) = Format.format(v; precision=2 )
+form( v :: Number, i, j ) = Format.format(v; precision=2, commas=true )
 
 """
 Correlation matrix for the policies
@@ -825,7 +825,7 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
         end
     end
     correlations = corrmatrix( dall, POLICIES )
-    (; df = df[1:i,:], plots, hists, correlations )
+    (; summarystats = df[1:i,:], plots, hists, correlations )
 end
 
 # dall = make_dataset()
