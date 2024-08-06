@@ -91,12 +91,6 @@ const SUMMARY_VARS = ["Age",
     "Gender",
     "Gender_Other",
     "Ethnic",
-    "Ethnic_White_Other",
-    "Ethnic_Mixed_Other",
-    "Ethnic_Asian_Other",
-    "Ethnic_Black_Other",
-    "Ethnic_Other_Other", # check all these for any entry
-    "Postcode4",
     "HH_Net_Income_PA",
     "Employment_Status",
     "Employment_Status_Other",
@@ -125,7 +119,9 @@ const SUMMARY_VARS = ["Age",
     "In_Control_Of_Life",
     "Life_Satisfaction",
     "Change_in_circumstance",
-    "Left_Right"]
+    "Left_Right",
+    "last_election",
+    "next_election"]
     
 #=
 Q66.6 # HH_Net_Income_PA
@@ -775,6 +771,9 @@ function run_regressions( dall :: DataFrame )
     end
 end
 
+"""
+Make a pile of summary statistics and histograms
+"""
 function summarystats( dall :: DataFrame ) :: NamedTuple
     n = 100
     df = DataFrame( name = fill("",n), 
@@ -847,4 +846,22 @@ t = pretty_table( d.correlations;
 t = pretty_table( d.correlations; 
     formatters=( form ), 
     backend = backend = Val(:latex))
+
+
+pretty_table( d.hists["Gender"],
+    formatters=( form ), 
+    sortkeys=true,
+    header = ( ["","Proportion"]),
+    table_class="table table-sm table-striped",
+    backend = Val(:html))
+)
+
+pretty_table( d.hists["next_election"],
+    formatters=( form ), 
+    sortkeys=true,
+    header = ( ["","Proportion"]),
+    table_class="table table-sm table-striped",
+    backend = Val(:html))
+)
+
 =#
