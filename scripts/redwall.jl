@@ -7,6 +7,7 @@ using AlgebraOfGraphics,
     ColorSchemes,
     CSV,
     DataFrames,
+    Format,
     GLM,
     PrettyTables,
     RegressionTables,
@@ -29,10 +30,8 @@ const MAIN_EXPLANDICT = Dict([
 
 const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 
-
-
-
 const POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
+
 const RENAMES = Dict(
     "Q65.2_1"=>"Support_All_Policies",
     "Q65.3_1"=>"Any_Argument",
@@ -89,11 +88,14 @@ const RENAMES = Dict(
 
 const SUMMARY_VARS = ["Age",
     "Gender",
-    "Gender_Other",
+    # "Gender_Other",
     "Ethnic",
+    "Left_Right",
+    "last_election",
+    "next_election",
     "HH_Net_Income_PA",
     "Employment_Status",
-    "Employment_Status_Other",
+    # "Employment_Status_Other",
     "Owner_Occupier",
     "At_Risk_of_Destitution",
     "Managing_Financially",
@@ -118,10 +120,8 @@ const SUMMARY_VARS = ["Age",
     "Think_About_Future",
     "In_Control_Of_Life",
     "Life_Satisfaction",
-    "Change_in_circumstance",
-    "Left_Right",
-    "last_election",
-    "next_election"]
+    # "Change_in_circumstance"
+    ]
     
 #=
 Q66.6 # HH_Net_Income_PA
@@ -414,9 +414,7 @@ function make_labels()::Dict{String,String}
     return merge(d, MAIN_EXPLANDICT )
 end
 
-
-
-function run_regressions( dall::DataFrame, mainvar :: Symbol )
+function run_regressions_by_mainvar( dall::DataFrame, mainvar :: Symbol )
     #
     # regressions: for each policy, before the explanation, do a big regression and a simple one and add them to a list
     # the convoluted `@eval(@formula( $(depvar)` bit just allows to sub in each dependent variable `$(depvar)`
@@ -455,72 +453,73 @@ function run_regressions( dall::DataFrame, mainvar :: Symbol )
             # $(relflourish)*$(mainvar) )), dall )
         push!( diffregs, reg )
     end 
+end # run_regressions_by_mainvar
 
+"""
+Take 2 - slightly different regressions and tables organised by policy
+"""
+function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
+    #
+    # regressions: for each policy, before the explanation, do a big regression and a simple one and add them to a list
+    # the convoluted `@eval(@formula( $(depvar)` bit just allows to sub in each dependent variable `$(depvar)`
+    #
+    regs=[]
+    simpleregs = []
+    for mainvar in MAIN_EXPLANVARS
+        depvar = Symbol( "$(policy)_pre")
+        reg = lm( @eval(@formula( $(depvar) ~ 
+            Age + next_election + ethnic_2 + employment_2 + 
+            log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender + 
+            $(mainvar))), dall )
+        push!( regs, reg )
+        reg = lm( @eval(@formula( $(depvar) ~ 
+            Age + Gender + $( mainvar ))), dall)
+        push!( simpleregs, reg )
+    end 
+    #
+    # regression of change in popularity of each policy against each explanation
+    #
+    diffregs=[]
+    for mainvar in MAIN_EXPLANVARS
+        depvar = Symbol( "$(policy)_change")
+        relgains = Symbol( "$(policy)_treat_relgains" )
+        relsec =Symbol( "$(policy)_treat_security" )
+        absgains =Symbol( "$(policy)_treat_absgains" )
+        relflourish = 
+            Symbol( "$(policy)_treat_other_argument" )
+        reg = lm( @eval(@formula( $(depvar) ~ Gender + $(relgains) + $(relflourish) + $(relsec) + $(mainvar))), dall )
+        push!( diffregs, reg )
+    end 
     labels = make_labels()
-    regtable(regs...;file="tmp/actnow-$(mainvar)-ols.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/actnow-simple-$(mainvar)-ols.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(diffregs...;file="tmp/actnow-change-$(mainvar)-ols.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(regs...;file="tmp/actnow-$(mainvar)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
-    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
-    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.tex",number_regressions=false, stat_below = false, render=LatexTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.tex",number_regressions=false, stat_below = false, render=LatexTable(), labels=labels)
-    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.tex",number_regressions=false, stat_below = false, render=LatexTable(), labels=labels)
-
-    #=
-    regtable(regs[1:5]...;file="tmp/actnow-$(mainvar)-ols-1-5.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(regs[6:10]...;file="tmp/actnow-$(mainvar)-ols-6-10.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
-    =#
-    #=
-    regtable(simpleregs[1:5]...;file="tmp/actnow-simple-$(mainvar)-ols-1-5.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(simpleregs[6:10]...;file="tmp/actnow-simple-$(mainvar)-ols-6-10.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
-    =#
-    #=
-    regtable(diffregs[1:5]...;file="tmp/actnow-change-$(mainvar)-ols-1-5.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(diffregs[6:10]...;file="tmp/actnow-change-$(mainvar)-ols-6-10.html",number_regressions=false, stat_below = false, render=HtmlTable(), labels=labels)
-    =#
-    # v = glm( @formula( basic_income_strong_approve_pre ~ Age + Age^2 + Party_Last_Election+ Ethnic + Employment_Status + log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender ), dall, Binomial(), ProbitLink() )
-    #=
-    for policy in POLICIES
-        f = Figure()
-        scats = []
-        ax = Axis(f[1,1],title="$(policy) : pre- and post- treatment by argument type.",xlabel="Pre",ylabel="Post")
-        for d in ["treat_absgains","treat_relgains","treat_security","treat_other_argument"]
-            treatment = "$(policy)_$(d)"
-            pre = "$(policy)_pre"
-            post = "$(policy)_post"
-            dd = dall[dall[:,treatment] .> 0,:]
-            x = scatter!( ax, dd[:,pre], dd[:,post] )
-            push!(scats,x)
-        end
-        Legend( f[1,2],scats,["Absolute Gains","Relative Gains","Security","The Other Argument"])
-        save( "tmp/img/$(policy)_pre_post.svg", f )
-    end
-
-    for policy in POLICIES
-        println( "<img src='img/$(policy)_pre_post.svg' />")
-    end
-    =#
-end
+    regtable(regs...;file="tmp/actnow-$(policy)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/actnow-simple-$(policy)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(diffregs...;file="tmp/actnow-change-$(policy)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.txt",number_regressions=false, stat_below = true, render=AsciiTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.txt",number_regressions=true, stat_below = false, render=AsciiTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.txt",number_regressions=true, stat_below = false, render=AsciiTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
+end # run_regressions_by_policy
 
 function edit_table( io, tablename )
     lines = readlines(tablename)
     table = lines[15:end]
-    insert!(table, 1, "<table class='table table-sm table-striped'>")
+    insert!(table, 1, "<table class='table table-sm table-striped  table-responsive'>")
     for t in table
         t = replace(t, r"<td .*?style=.*?>(.*?)</td>" => s"<th>\1</th>")
         println( io, t)
     end
 end
 
-function make_big_file()
+function make_big_file_by_explanvar()
     io = open( "tmp/all_results.html", "w")
     header = """
     <!DOCTYPE html>
     <html>
     <title>Act Now Main Regression Library</title>
     <link rel="stylesheet" href="css/bisite-bootstrap.css"/>
-    <body>
+    <body class='text-primary p-2'>
     <title>
         <h1>Act Now Main Regression Library</h1>
     </title>
@@ -587,6 +586,101 @@ function make_big_file()
     println( io, footer )
     close(io)
 end
+
+function make_big_file_by_policy()
+    io = open( "tmp/all_results_by_policy.html", "w")
+    header = """
+    <!DOCTYPE html>
+    <html>
+    <title>Act Now Main Regression Library</title>
+    <link rel="stylesheet" href="css/bisite-bootstrap.css"/>
+    <body class='text-primary p-2'>
+    <h1>Act Now Main Regression Library</h1>
+    <p>
+    These are .. 
+    </p>
+    <p>
+    NOTE: The summary statistics use weighted data. Regressions use unweighted data.
+    </p>
+    <h3>Contents</h3>
+    <ul>
+        <li><a href='#summary'>Summary Statistics</a>
+        <li><a href='#regressions'>Regressions</a>
+        <li><a href='#chart-gallery'>Charts of Popularity of each policy</a>
+    </ul>
+    """
+    footer = """
+    <footer>
+
+    </footer>
+    </body>
+    </html>
+    """
+    println(io, header)
+
+    println(io, "<section id='summary'>")
+    println( io, "<h2>Summary Statistics</h2>")
+    lines = readlines("tmp/summary_stats.html")
+    for l in lines
+        println( io, l )
+    end
+    println(io,"</section'>")
+    println(io, "<h2 id='regressions'>Regressions: by Policy</h2>")
+    for policy in POLICIES 
+        exvar = pretty( policy ) * " (Before Explanation)"
+        # exvar = MAIN_EXPLANDICT[Symbol(mainvar)]
+        notes1 = """
+        <p>
+        Results are relative to:
+        </p>
+        <ul>
+            <li>vote next election: Conservative;</li>
+            <li>Not Working;</li>
+            <li>Female;</li>
+            <li>Main explanatory variable (last variable in each regression)<strong>False</strong></li>
+        </ul>
+        """
+        notes2 = """
+        Results are Relative to:
+        <ul>
+            <li>Shown Absolute Gains Argument;</li>
+            <li>Main explanatory variable (last variable in each regression)<strong>False</strong></li>
+        </ul>
+        """    
+        println( io, "<section>")
+        println( io, "<h2>Regressions - Policy: $exvar </h2>")
+        println( io, "<h3>Popularity of Policy: 1) Full Regression</h3>")
+        fn = "tmp/actnow-$(policy)-ols.html"
+        edit_table( io, fn )
+        fnl = "regressions/actnow-$(policy)-ols"
+        println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
+        println( io, notes1 )
+        #
+        println( io, "<h3>Popularity of Policy: 2): Short Regressions</h3>")
+        fn = "tmp/actnow-simple-$(policy)-ols.html"
+        edit_table( io, fn )
+        fnl = "regressions/actnow-simple-$(policy)-ols"
+        println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
+        #
+        println( io, "<h3>Change in Popularity Of Policy: By Argument</h3>")
+        fn = "tmp/actnow-change-$(policy)-ols.html"
+        edit_table( io, fn )    
+        println(io, notes2 )    
+        fnl = "regressions/actnow-change-$(policy)-ols"
+        println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
+        println( io, "</section>")
+    end
+    println(io, "<section id='chart-gallery'>")
+    println( io, "<h2>Image Gallery</h2>")
+    lines = readlines("tmp/image-index.html")
+    for l in lines
+        println( io, l )
+    end
+    println(io,"</section>")
+    println( io, footer )
+    close(io)
+end
+
 
 const POL_COLS = scale_color_manual( :blue,:red,:orange,:green,:grey,:purple )
 
@@ -767,7 +861,11 @@ end
 
 function run_regressions( dall :: DataFrame )
     for mainvar in MAIN_EXPLANVARS
-        runregressions( dall, mainvar )
+        # run_regressions_by_mainvar( dall, mainvar )
+    end
+
+    for policy in POLICIES
+        run_regressions_by_policy( dall, policy )
     end
 end
 
@@ -804,9 +902,12 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
         df.median_post[i] = median( v, w )
     end
     println( "x")
+    discretevars = []
+    non_discretevars = []
     for p in SUMMARY_VARS
         v = dall[!,Symbol(p)]
         if eltype( v ) <: Number
+            push!( non_discretevars, p )
             i += 1
             hs = fit(Histogram, v, w )
             hsp = plot( hs )
@@ -817,14 +918,15 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
             df.median_pre[i] = median( v, w )
             df.std[i] = std( v, w )
         else
+            push!( discretevars, p )
             c = countmap( v, w )
             hists[p] = c
-            barc = data( dall ) * frequency() * mapping(Symbol(p))
+            barc = data( dall ) * frequency() * mapping(Symbol(p) => pretty(p))
             plots[p] = draw(barc)
         end
     end
     correlations = corrmatrix( dall, POLICIES )
-    (; summarystats = df[1:i,:], plots, hists, correlations )
+    (; summarystats = df[1:i,:], plots, hists, correlations, discretevars, non_discretevars )
 end
 
 # dall = make_dataset()
@@ -833,35 +935,81 @@ dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFram
 dall.weight = Weights(dall.weight)
 dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
 
-#=
-t = pretty_table( d.correlations; 
-           formatters=( form ), 
-           table_class="table table-sm table-striped", 
-           backend = Val(:html))
 
-t = pretty_table( d.correlations; 
-    formatters=( form ), 
-    backend = backend = Val(:markdown))
-
-t = pretty_table( d.correlations; 
-    formatters=( form ), 
-    backend = backend = Val(:latex))
-
-
-pretty_table( d.hists["Gender"],
-    formatters=( form ), 
-    sortkeys=true,
-    header = ( ["","Proportion"]),
-    table_class="table table-sm table-striped",
-    backend = Val(:html))
-)
-
-pretty_table( d.hists["next_election"],
-    formatters=( form ), 
-    sortkeys=true,
-    header = ( ["","Proportion"]),
-    table_class="table table-sm table-striped",
-    backend = Val(:html))
-)
-
-=#
+function make_and_print_summarystats( dall :: DataFrame )
+    d = summarystats( dall )
+    io = open( "tmp/summary_stats.html", "w")
+    println( io, "<h3>Summary Statistics</h3>")
+    t = pretty_table( 
+        io,
+        d.summarystats; 
+        formatters=( form ), 
+        header = ( ["Variable","Mean", "Median", "Mean (After argument)", "Median (After)", "Standard Deviation"]),
+        table_class="table table-sm table-striped table-responsive", 
+        backend = Val(:html))
+    println( io, "<h3>Correlations between Popularity of Policies</h3>")
+    t = pretty_table( 
+        io,
+        d.correlations; 
+        header = (["Basic Income","Green New Deal", "Utilities", "Health", "Childcare", "Education", "Housing", "Transport", "Democracy", "Tax", ""]),
+        formatters=( form ), 
+        table_class="table table-sm table-striped  table-responsive", 
+        backend = Val(:html))
+    #=
+    t = pretty_table( 
+        io,
+        d.correlations; 
+        formatters=( form ), 
+        backend = backend = Val(:markdown))
+    t = pretty_table( 
+        io,
+        d.correlations; 
+        formatters=( form ), 
+        backend = backend = Val(:latex))
+    =#
+    println( io, "<div class='row border border-primary'>")
+    c = 0
+    for v in d.discretevars 
+        c += 1
+        pv = pretty(v)
+        println( io, "<div class='col p-2 border border-2'>")
+        println( io, "<h4>$pv</h4>")
+        
+        t = pretty_table( 
+            io,
+            d.hists[v],
+            formatters=( form ), 
+            sortkeys=true,
+            header = ( ["","Proportion"]),
+            table_class="table table-sm table-striped table-responsive",
+            backend = Val(:html))
+        println( io, "</div>")
+        if c == 3
+            c = 0
+            println( io, "</div>")
+            println( io, "<div class='row'>")
+        end
+    end 
+   
+    println( io, "</div>")
+    c = 0
+    println( io, "<div class='row border border-primary'>")
+    for v in d.non_discretevars
+        c += 1
+        pv = pretty(v)
+        println( io, "<div class='col p-2  border border-2'>")
+        println( io, "<h4>$pv</h4>")
+        fname = "tmp/img/actnow-$(v)-bar.svg"
+        save( fname, d.plots[v] )
+        fname = "img/actnow-$(v)-bar.svg"
+        println( io, "<p><img src='$fname'/><p>")
+        println( io, "</div>")
+        if c == 3
+            c = 0
+            println( io, "</div>")
+            println( io, "<div class='row'>")
+        end
+    end
+    println( io, "</div>")    
+    close( io )
+end
