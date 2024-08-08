@@ -21,12 +21,13 @@ using .Utils
 DATA_DIR="/mnt/data/ActNow/Surveys/live/"
 
 const MAIN_EXPLANDICT = Dict([
+    "x" => "No Main Expanatory Variable",
     "destitute"=>"At Risk Of Destitution (Q66.9_1 is 70 and over)", 
     "poorhealth" => "In Poor Health (Q66.13 is 'Bad' or 'Very Bad')",
     "unsatisfied_with_income" => "Unsatisfied with Income (Q66.11 in 1,2,3)",
     "Owner_Occupier" => "Owner Occupier, inc. with a Mortgage (Q66.8=yes)", 
     "down_the_ladder" => "Low Life Satisfaction (Q66.12 - Life Ladder in 1..4)",
-    "not_managing_financially" => "Not Managing Well Financially (Q66.10 in 4,5"])
+    "not_managing_financially" => "Not Managing Well Financially (Q66.10 in 4,5)"])
 
 const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 
@@ -422,13 +423,15 @@ function make_labels()::Dict{String,String}
         d["$(policy)_treat_absgains"] = "Shown Absolute Gains Argument"
         d["$(policy)_treat_other_argument"] = "Shown Flourishing Argument"
     end
+    d["Age"] = "Age (Q66.2)"
+    d["Gender"] = "Gender (Q66.3)"
     d["is_redwall"] = "From Redwall Constituency"
     d["next_election"] = "Voting Intention (Q66.23)"
     # d["destitute"] = "At Risk of Destitution"
     d["log(HH_Net_Income_PA)"] = "Log of household annual net income (Q66.6)"
     d["ethnic_2: Other Ethnic"] = "Not Ethnically British (Q66.4)"
     d["Gender: In another way (please type in below)"] = "Other Gender/Gender not specified (Q66.3)"
-    d["employment_2: Working/SE Inc. Part-Time"] = "Working or Self Employed (inc. part-time)"
+    d["employment_2: Working/SE Inc. Part-Time"] = "Working or Self Employed (inc. part-time) (Q66.7)"
     return merge(d, MAIN_EXPLANDICT )
 end
 
@@ -441,13 +444,23 @@ function run_regressions_by_mainvar( dall::DataFrame, mainvar :: Symbol )
     simpleregs = []
     for policy in POLICIES
         depvar = Symbol( "$(policy)_pre")
-        reg = lm( @eval(@formula( $(depvar) ~ 
-            Age + next_election + ethnic_2 + employment_2 + 
-            log(HH_Net_Income_PA) + is_redwall + Gender + 
-            $(mainvar))), dall )
+        if mainvar == :x
+            reg = lm( @eval(@formula( $(depvar) ~ 
+                Age + next_election + ethnic_2 + employment_2 + 
+                log(HH_Net_Income_PA) + is_redwall + Gender )), dall )
+        else
+            reg = lm( @eval(@formula( $(depvar) ~ 
+                Age + next_election + ethnic_2 + employment_2 + 
+                log(HH_Net_Income_PA) + is_redwall + Gender + 
+                $(mainvar))), dall )
+        end
         push!( regs, reg )
-        reg = lm( @eval(@formula( $(depvar) ~ 
-            Age + Age^2 + $( mainvar ))), dall)
+        if mainvar == :x
+            reg = lm( @eval(@formula( $(depvar) ~ Age + Gender )), dall)
+        else 
+            reg = lm( @eval(@formula( $(depvar) ~ 
+                Age + Gender + $( mainvar ))), dall)
+        end
         push!( simpleregs, reg )
     end 
     #
@@ -461,14 +474,11 @@ function run_regressions_by_mainvar( dall::DataFrame, mainvar :: Symbol )
         absgains =Symbol( "$(policy)_treat_absgains" )
         relflourish = 
             Symbol( "$(policy)_treat_other_argument" )
-        #=
-        reg = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relsec) + $(relflourish) + 
-            $(absgains)*$(mainvar) + $(relgains)*$(mainvar) + $(relsec)*$(mainvar) + 
-            $(relflourish)*$(mainvar) )), dall )
-        =#
-        reg = lm( @eval(@formula( $(depvar) ~ Gender + $(relgains) + $(relflourish) + $(relsec) + $(mainvar))), dall )
-            # $(absgains)*$(mainvar) + $(relgains)*$(mainvar) + $(relsec)*$(mainvar) + 
-            # $(relflourish)*$(mainvar) )), dall )
+        if mainvar == :x
+            reg = lm( @eval(@formula( $(depvar) ~ Gender + $(relgains) + $(relflourish) + $(relsec))), dall )
+        else
+            reg = lm( @eval(@formula( $(depvar) ~ Gender + $(relgains) + $(relflourish) + $(relsec) + $(mainvar))), dall )            
+        end
         push!( diffregs, reg )
     end 
     labels = make_labels()
@@ -550,16 +560,14 @@ function edit_table( io, tablename )
 end
 
 function make_big_file_by_explanvar()
-    io = open( "tmp/all_results.html", "w")
+    io = open( "tmp/all_results_by_explanvar.html", "w")
     header = """
     <!DOCTYPE html>
     <html>
     <title>Act Now Main Regression Library</title>
     <link rel="stylesheet" href="css/bisite-bootstrap.css"/>
     <body class='text-primary p-2'>
-    <title>
-        <h1>Act Now Main Regression Library</h1>
-    </title>
+    <h1>Act Now Main Regression Library</h1>
     """
     footer = """
     <footer>
@@ -721,14 +729,6 @@ end
 
 const POL_COLS = scale_color_manual( :blue,:red,:orange,:green,:grey,:purple )
 
-#=
-const BLANK = ggplot() + 
-    theme( xticklabelsvisible = false, xgridvisible = false, yticklabelsvisible = false,
-        ygridvisible = false, xtickcolor = :transparent, ytickcolor = :transparent, 
-        bottomspinevisible = false, topspinevisible = false, rightspinevisible = false, 
-        leftspinevisible = false )
-=#
-
 """
 Draw our scatter plots with the parties colo[u]red in.
 """
@@ -766,16 +766,6 @@ function draw_policies2( df::DataFrame, pol1 :: Symbol, pol2 :: Symbol ) :: Tupl
             policy2=>label2 ) * 
         mapping(  color=:next_election=>vote_label) *
         visual(Scatter)
-    
-    #=
-    layers = 
-        mapping( 
-            policy1=>label1, #:democracy_pre=>"Democracy",
-            policy2=>label2 ) +
-        linear() + 
-        mapping( color=:next_election=>vote_label) 
-    =#
-
     spec2 = ddf * 
         mapping( 
             policy1=>label1, #:democracy_pre=>"Democracy",
@@ -800,14 +790,6 @@ function draw_policies2( df::DataFrame, pol1 :: Symbol, pol2 :: Symbol ) :: Tupl
     f = Figure()
     s1,s2,s3 
 end
-
-    # hist = ddf * mapping(pol_w, stack=:next_election, color=:next_election) * histogram(  )
-    #=
-    hist = ddf * 
-        mapping( policy=>label, weights=:weight ) *
-        histogram( direction=:x)
-        # AlgebraOfGraphics.histogram() # direction = :x ) #AlgebraOfGraphics.density(direction = :x)
-    =#
 
 """
 Buggy version using Tidyverse
@@ -897,6 +879,8 @@ function make_all_graphs( dall::DataFrame )
 end
 
 function run_regressions( dall :: DataFrame )
+
+    run_regressions_by_mainvar( dall, :x )
     for mainvar in MAIN_EXPLANVARS
         run_regressions_by_mainvar( dall, mainvar )
     end
@@ -966,8 +950,6 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
     (; summarystats = df[1:i,:], plots, hists, correlations, discretevars, non_discretevars )
 end
 
-# dall = make_dataset()
-
 function make_and_print_summarystats( dall :: DataFrame )
     d = summarystats( dall )
     io = open( "tmp/summary_stats.html", "w")
@@ -987,18 +969,6 @@ function make_and_print_summarystats( dall :: DataFrame )
         formatters=( form ), 
         table_class="table table-sm table-striped  table-responsive", 
         backend = Val(:html))
-    #=
-    t = pretty_table( 
-        io,
-        d.correlations; 
-        formatters=( form ), 
-        backend = backend = Val(:markdown))
-    t = pretty_table( 
-        io,
-        d.correlations; 
-        formatters=( form ), 
-        backend = backend = Val(:latex))
-    =#
     println( io, "<div class='row border border-primary'>")
     c = 0
     for v in d.discretevars 
