@@ -1,5 +1,5 @@
 #
-# 
+# This script generates regressions & charts from the ActNow dataset,
 #
 using AlgebraOfGraphics,
     CairoMakie,
@@ -21,12 +21,12 @@ using .Utils
 DATA_DIR="/mnt/data/ActNow/Surveys/live/"
 
 const MAIN_EXPLANDICT = Dict([
-    "destitute"=>"At Risk Of Destitution", 
-    "poorhealth" => "In Poor Health",
-    "unsatisfied_with_income" => "Unsatisfied with Income",
-    "Owner_Occupier" => "Owner Occupier, inc. with a Mortgage", 
-    "down_the_ladder" => "Low Life Satisfaction (Life Ladder 1..4)",
-    "not_managing_financially" => "Not Managing Well Financially"])
+    "destitute"=>"At Risk Of Destitution (Q66.9_1 is 70 and over)", 
+    "poorhealth" => "In Poor Health (Q66.13 is 'Bad' or 'Very Bad')",
+    "unsatisfied_with_income" => "Unsatisfied with Income (Q66.11 in 1,2,3)",
+    "Owner_Occupier" => "Owner Occupier, inc. with a Mortgage (Q66.8=yes)", 
+    "down_the_ladder" => "Low Life Satisfaction (Q66.12 - Life Ladder in 1..4)",
+    "not_managing_financially" => "Not Managing Well Financially (Q66.10 in 4,5"])
 
 const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 
@@ -86,6 +86,22 @@ const RENAMES = Dict(
     "Q66.24_5"=>"Politicians_Want_To_Make_Things_Better",
     "Q66.24_6"=>"Shouldnt_Rely_On_Government" )
 
+const RENAMES_REV = Dict( values(RENAMES) .=> keys(RENAMES))
+
+function lpretty( s :: AbstractString ) :: String
+    o = pretty( s )
+    v = get(RENAMES_REV,s,"")
+    if v == ""
+        return o
+    end
+    return "$v - $o"
+end 
+
+function lpretty( s :: Symbol ) :: String
+    lpretty(String(s))
+end
+
+    
 const SUMMARY_VARS = ["Age",
     "Gender",
     # "Gender_Other",
@@ -122,7 +138,8 @@ const SUMMARY_VARS = ["Age",
     "Life_Satisfaction",
     # "Change_in_circumstance"
     ]
-    
+
+
 #=
 Q66.6 # HH_Net_Income_PA
 Q66.8 # Owner_Occupier
@@ -155,7 +172,7 @@ function corrmatrix( df, keys, pre_or_post = "_pre" ) :: DataFrame
             corrs[r,c] = missing
         end
     end
-    labels = pretty.(keys)
+    labels = lpretty.(keys)
     df = DataFrame( corrs, labels )
     df." " = labels
     df
@@ -396,7 +413,7 @@ end # make dataset
 function make_labels()::Dict{String,String}
     d = Dict{String,String}()
     for policy in POLICIES
-        pp = pretty( policy )
+        pp = lpretty( policy )
         d["$(policy)_change"] = "$pp"
         d["$(policy)_pre"] = "$pp"
         d["$(policy)_post"] = "$pp"
@@ -627,7 +644,7 @@ function make_big_file_by_policy()
     println(io,"</section'>")
     println(io, "<h2 id='regressions'>Regressions: by Policy</h2>")
     for policy in POLICIES 
-        exvar = pretty( policy ) * " (Before Explanation)"
+        exvar = lpretty( policy ) * " (Before Explanation)"
         # exvar = MAIN_EXPLANDICT[Symbol(mainvar)]
         notes1 = """
         <p>
@@ -714,8 +731,8 @@ Drawing all our charts using the marginally less mad AlgebraOfGraphics lib.
 function draw_policies2( df::DataFrame, pol1 :: Symbol, pol2 :: Symbol ) :: Tuple
     policy1 = Symbol("$(pol1)_pre")
     policy2 = Symbol("$(pol2)_pre")
-    label1 = "Preference for "*pretty( pol1 )
-    label2 = "Preference for "*pretty( pol2 )
+    label1 = "Preference for "*lpretty( pol1 )
+    label2 = "Preference for "*lpretty( pol2 )
     title = "$(label1) vs $(label2) (before treatment)"
     vote_label = "Voting Intention (January 2024)"
     # FIXME some neat way of doing this with mapping
@@ -829,12 +846,12 @@ function make_all_graphs( dall::DataFrame )
     io = open( "tmp/image-index.html","w")
     for p1 in POLICIES 
         println( io, "<section>")
-        pp1 = pretty( p1 )
+        pp1 = lpretty( p1 )
         println( io, "<h3>$pp1</h3>" )
         println( io, "<table class='table'>")
         println( io, "<thead></thead><tbody>")
         for p2 in POLICIES 
-            pp2 = pretty( p2 )
+            pp2 = lpretty( p2 )
             if p1 !== p2 
                 cp1,cp2,cp3 = draw_policies2( dall, p1, p2 )
                 println( "$p1  $p2" )
@@ -892,7 +909,7 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
         hsp = plot( hs )
         plots[p] = hsp
         hists[p] = hs
-        df.name[i] = pretty(p)
+        df.name[i] = lpretty(p)
         df.mean_pre[i] = mean( v, w )
         df.std[i] = std( v, w )
         df.median_pre[i] = median( v, w )
@@ -913,7 +930,7 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
             hsp = plot( hs )
             plots[p] = hsp
             hists[p] = hs
-            df.name[i] = pretty(p)
+            df.name[i] = lpretty(p)
             df.mean_pre[i] = mean( v, w )
             df.median_pre[i] = median( v, w )
             df.std[i] = std( v, w )
@@ -921,7 +938,7 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
             push!( discretevars, p )
             c = countmap( v, w )
             hists[p] = c
-            barc = data( dall ) * frequency() * mapping(Symbol(p) => pretty(p))
+            barc = data( dall ) * frequency() * mapping(Symbol(p) => lpretty(p))
             plots[p] = draw(barc)
         end
     end
@@ -971,7 +988,7 @@ function make_and_print_summarystats( dall :: DataFrame )
     c = 0
     for v in d.discretevars 
         c += 1
-        pv = pretty(v)
+        pv = lpretty(v)
         println( io, "<div class='col p-2 border border-2'>")
         println( io, "<h4>$pv</h4>")
         
@@ -996,7 +1013,7 @@ function make_and_print_summarystats( dall :: DataFrame )
     println( io, "<div class='row border border-primary'>")
     for v in d.non_discretevars
         c += 1
-        pv = pretty(v)
+        pv = lpretty(v)
         println( io, "<div class='col p-2  border border-2'>")
         println( io, "<h4>$pv</h4>")
         fname = "tmp/img/actnow-$(v)-bar.svg"
