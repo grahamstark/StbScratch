@@ -423,10 +423,11 @@ function make_labels()::Dict{String,String}
         d["$(policy)_treat_other_argument"] = "Shown Flourishing Argument"
     end
     d["is_redwall"] = "From Redwall Constituency"
+    d["next_election"] = "Voting Intention (Q66.23)"
     # d["destitute"] = "At Risk of Destitution"
-    d["log(HH_Net_Income_PA)"] = "Log of household annual net income"
-    d["ethnic_2: Other Ethnic"] = "Not Ethnically British"
-    d["Gender: In another way (please type in below)"] = "Other Gender/Gender not specified"
+    d["log(HH_Net_Income_PA)"] = "Log of household annual net income (Q66.6)"
+    d["ethnic_2: Other Ethnic"] = "Not Ethnically British (Q66.4)"
+    d["Gender: In another way (please type in below)"] = "Other Gender/Gender not specified (Q66.3)"
     d["employment_2: Working/SE Inc. Part-Time"] = "Working or Self Employed (inc. part-time)"
     return merge(d, MAIN_EXPLANDICT )
 end
@@ -441,8 +442,8 @@ function run_regressions_by_mainvar( dall::DataFrame, mainvar :: Symbol )
     for policy in POLICIES
         depvar = Symbol( "$(policy)_pre")
         reg = lm( @eval(@formula( $(depvar) ~ 
-            Age + Age^2 + next_election + ethnic_2 + employment_2 + 
-            log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender + 
+            Age + next_election + ethnic_2 + employment_2 + 
+            log(HH_Net_Income_PA) + is_redwall + Gender + 
             $(mainvar))), dall )
         push!( regs, reg )
         reg = lm( @eval(@formula( $(depvar) ~ 
@@ -465,11 +466,21 @@ function run_regressions_by_mainvar( dall::DataFrame, mainvar :: Symbol )
             $(absgains)*$(mainvar) + $(relgains)*$(mainvar) + $(relsec)*$(mainvar) + 
             $(relflourish)*$(mainvar) )), dall )
         =#
-        reg = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relflourish) + $(relsec) + $(mainvar))), dall )
+        reg = lm( @eval(@formula( $(depvar) ~ Gender + $(relgains) + $(relflourish) + $(relsec) + $(mainvar))), dall )
             # $(absgains)*$(mainvar) + $(relgains)*$(mainvar) + $(relsec)*$(mainvar) + 
             # $(relflourish)*$(mainvar) )), dall )
         push!( diffregs, reg )
     end 
+    labels = make_labels()
+    regtable(regs...;file="tmp/actnow-$(mainvar)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/actnow-simple-$(mainvar)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(diffregs...;file="tmp/actnow-change-$(mainvar)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.txt",number_regressions=false, stat_below = true, render=AsciiTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.txt",number_regressions=true, stat_below = false, render=AsciiTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.txt",number_regressions=true, stat_below = false, render=AsciiTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
 end # run_regressions_by_mainvar
 
 """
@@ -482,11 +493,23 @@ function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
     #
     regs=[]
     simpleregs = []
+    depvar = Symbol( "$(policy)_pre")
+    depvar = Symbol( "$(policy)_change")
+    relgains = Symbol( "$(policy)_treat_relgains" )
+    relsec =Symbol( "$(policy)_treat_security" )
+    absgains = Symbol( "$(policy)_treat_absgains" )
+    relflourish = Symbol( "$(policy)_treat_other_argument" )
+
+    reg = lm( @eval(@formula( $(depvar) ~ 
+        Age + next_election + ethnic_2 + employment_2 + 
+        log(HH_Net_Income_PA) + is_redwall + Gender )), dall )
+    push!( regs, reg )
+    reg = lm( @eval(@formula( $(depvar) ~ Age + Gender )), dall)
+    push!( simpleregs, reg )
     for mainvar in MAIN_EXPLANVARS
-        depvar = Symbol( "$(policy)_pre")
         reg = lm( @eval(@formula( $(depvar) ~ 
             Age + next_election + ethnic_2 + employment_2 + 
-            log(HH_Net_Income_PA) + Owner_Occupier + is_redwall + Gender + 
+            log(HH_Net_Income_PA) + is_redwall + Gender + 
             $(mainvar))), dall )
         push!( regs, reg )
         reg = lm( @eval(@formula( $(depvar) ~ 
@@ -497,13 +520,10 @@ function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
     # regression of change in popularity of each policy against each explanation
     #
     diffregs=[]
+
+    reg = lm( @eval(@formula( $(depvar) ~ Gender + $(relgains) + $(relflourish) + $(relsec))), dall )
+    push!( diffregs, reg )
     for mainvar in MAIN_EXPLANVARS
-        depvar = Symbol( "$(policy)_change")
-        relgains = Symbol( "$(policy)_treat_relgains" )
-        relsec =Symbol( "$(policy)_treat_security" )
-        absgains =Symbol( "$(policy)_treat_absgains" )
-        relflourish = 
-            Symbol( "$(policy)_treat_other_argument" )
         reg = lm( @eval(@formula( $(depvar) ~ Gender + $(relgains) + $(relflourish) + $(relsec) + $(mainvar))), dall )
         push!( diffregs, reg )
     end 
@@ -878,7 +898,7 @@ end
 
 function run_regressions( dall :: DataFrame )
     for mainvar in MAIN_EXPLANVARS
-        # run_regressions_by_mainvar( dall, mainvar )
+        run_regressions_by_mainvar( dall, mainvar )
     end
 
     for policy in POLICIES
@@ -947,11 +967,6 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
 end
 
 # dall = make_dataset()
-
-dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
-dall.weight = Weights(dall.weight)
-dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
-
 
 function make_and_print_summarystats( dall :: DataFrame )
     d = summarystats( dall )
@@ -1030,3 +1045,9 @@ function make_and_print_summarystats( dall :: DataFrame )
     println( io, "</div>")    
     close( io )
 end
+
+
+dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
+dall.weight = Weights(dall.weight)
+dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
+
