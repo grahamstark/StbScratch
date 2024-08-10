@@ -21,7 +21,7 @@ using .Utils
 DATA_DIR="/mnt/data/ActNow/Surveys/live/"
 
 const MAIN_EXPLANDICT = Dict([
-    "x" => "No Main Expanatory Variable",
+    # "x" => "No Main Expanatory Variable",
     "destitute"=>"At Risk Of Destitution (Q66.9_1 is 70 and over)", 
     "poorhealth" => "In Poor Health (Q66.13 is 'Bad' or 'Very Bad')",
     "unsatisfied_with_income" => "Unsatisfied with Income (Q66.11 in 1,2,3)",
@@ -504,7 +504,6 @@ function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
     regs=[]
     simpleregs = []
     depvar = Symbol( "$(policy)_pre")
-    depvar = Symbol( "$(policy)_change")
     relgains = Symbol( "$(policy)_treat_relgains" )
     relsec =Symbol( "$(policy)_treat_security" )
     absgains = Symbol( "$(policy)_treat_absgains" )
@@ -530,7 +529,7 @@ function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
     # regression of change in popularity of each policy against each explanation
     #
     diffregs=[]
-
+    depvar = Symbol( "$(policy)_change")
     reg = lm( @eval(@formula( $(depvar) ~ Gender + $(relgains) + $(relflourish) + $(relsec))), dall )
     push!( diffregs, reg )
     for mainvar in MAIN_EXPLANVARS
