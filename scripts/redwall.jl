@@ -12,6 +12,7 @@ using AlgebraOfGraphics,
     PrettyTables,
     RegressionTables,
     StatsBase,
+    HypothesisTests,
     SurveyDataWeighting,
     Tidier
 
@@ -162,21 +163,27 @@ form( v :: Number, i, j ) = Format.format(v; precision=2, commas=true )
 """
 Correlation matrix for the policies
 """
-function corrmatrix( df, keys, pre_or_post = "_pre" ) :: DataFrame
+function corrmatrix( df, keys, pre_or_post = "_pre" ) :: Tuple
     corrtars = Symbol.(string.(keys).*pre_or_post)
     n = length(keys)
     corrs = cor(Matrix(df[:,corrtars]))
-    corrs = convert(Array{Union{Float64,Missing}},corrs)    
+    targets = df[:,corrtars]
+    corrs = pairwise( cor, eachcol(targets); symmetric=true )
+    pvals = pvalue.(pairwise(CorrelationTest, eachcol(targets); symmetric=true ))
+    # corrs = convert(Array{Union{Float64,Missing}},corrs)    
     println(corrs)
+    #=
     for r in 1:n
         for c in (r+1):n
             corrs[r,c] = missing
         end
     end
+    =#
     labels = lpretty.(keys)
     df = DataFrame( corrs, labels )
     df." " = labels
-    df
+    degrees_of_freedom = size(df)[2] - 2
+    df, pvals, degrees_of_freedom
 end
 
 
@@ -894,33 +901,77 @@ Make a pile of summary statistics and histograms
 """
 function summarystats( dall :: DataFrame ) :: NamedTuple
     n = 100
-    df = DataFrame( name = fill("",n), 
+    df = DataFrame( 
+        name = fill("",n), 
         mean_pre=zeros(n), 
         median_pre=zeros(n), 
+        std = zeros(n),
         mean_post=zeros(n), 
         median_post=zeros(n), 
-        std = zeros(n) )
+
+        avlove_pre = zeros(n),
+        avhate_pre = zeros(n),
+        nlovers_pre = zeros(n),
+        nhaters_pre = zeros(n),
+
+        nhaters_post = zeros(n),
+        nlovers_post = zeros(n),
+        avlove_post = zeros(n),
+        avhate_post = zeros(n),
+        average_change = zeros(n),
+        change_amongst_haters = zeros(n),
+        change_amongst_lovers = zeros(n) )
     i = 0
     w = dall.probability_weight
     plots = Dict()
     hists = Dict()
     for p in POLICIES 
         i += 1
-        pp = Symbol("$(p)_pre")
-        v = dall[!,pp]
-        hs = fit(Histogram, v, w )
+        ppre = Symbol("$(p)_pre")
+        vpre = dall[!,ppre]
+        ppost = Symbol("$(p)_post")
+        vpost = dall[!,ppost]                
+        haters_pre = dall[vpre .< 30, : ]
+        lovers_pre = dall[vpre .> 70, : ]
+        nhaters_pre = sum( haters_pre.probability_weight )
+        nlovers_pre = sum( lovers_pre.probability_weight )
+        haters_post = dall[vpost .< 30, : ]
+        lovers_post = dall[vpost .> 70, : ]
+        nhaters_post = sum( haters_post.probability_weight )
+        nlovers_post = sum( lovers_post.probability_weight )
+        # 
+        avlove_pre = sum( lovers_pre[!,ppre] .* lovers_pre.probability_weight ) / nlovers_pre
+        avhate_pre = sum( haters_pre[!,ppre] .* haters_pre.probability_weight ) / nhaters_pre
+
+        # change in love/hate among the top 30/bottom 30 of those who loved/hated pre
+        # so the post columns from the pre-sub
+        avlove_post = sum( lovers_pre[!,ppost] .* lovers_pre.probability_weight ) / nlovers_pre
+        avhate_post = sum( haters_pre[!,ppost] .* haters_pre.probability_weight ) / nhaters_pre
+
+        hs = fit(Histogram, vpre, w )
         hsp = plot( hs )
         plots[p] = hsp
         hists[p] = hs
         df.name[i] = lpretty(p)
-        df.mean_pre[i] = mean( v, w )
-        df.std[i] = std( v, w )
-        df.median_pre[i] = median( v, w )
-        pp = Symbol("$(p)_post")
-        v = dall[!,pp]        
-        df.mean_post[i] = mean( v, w )        
-        df.median_post[i] = median( v, w )
+        df.mean_pre[i] = mean( vpre, w )
+        df.std[i] = std( vpre, w )
+        df.median_pre[i] = median( vpre, w )
+        df.mean_post[i] = mean( vpost, w )        
+        df.median_post[i] = median( vpost, w )
+
+        df.avlove_pre[i] = avlove_pre
+        df.avhate_pre[i] = avhate_pre
+        df.nhaters_pre[i] = nhaters_pre
+        df.nlovers_pre[i] = nlovers_pre
+        df.nlovers_post[i] = nlovers_post
+        df.avlove_post[i] = avlove_post
+        df.avhate_post[i] = avhate_post
+        df.nhaters_post[i] = nhaters_post
+
+        df.change_amongst_haters[i] = avhate_post - avhate_pre
+        df.change_amongst_lovers[i] = avlove_post - avlove_pre
     end
+    df.average_change = df.mean_post - df.mean_pre
     println( "x")
     discretevars = []
     non_discretevars = []
