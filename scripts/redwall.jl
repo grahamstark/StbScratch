@@ -1092,6 +1092,28 @@ function make_all_graphs( dall::DataFrame )
         println( io, "</tbody></table>")
         println( io, "</section>")
     end
+    for p1 in POLICIES 
+        println( io, "<section>")
+        pp1 = lpretty( p1 )
+        println( io, "<h3>Change in Score vs Rating of Argument $pp1</h3>" )
+        println( io, "<table class='table'>")
+        println( io, "<thead></thead><tbody>")
+        cp1,cp2,cp3 = draw_change_vs_score( dall, p1 )
+        println( "$p1  $p2" )
+        save( "tmp/img/actnow-change-$(p1)-scatter.svg", cp1 )
+        save( "tmp/img/actnow-change-$(p1)-scatter-linear.svg", cp2 )
+        save( "tmp/img/actnow-change-$(p1)-facet.svg", cp3 )
+        save( "tmp/img/actnow-change-$(p1)-scatter.png", cp1 )
+        save( "tmp/img/actnow-change-$(p1)-scatter-linear.png", cp2 )
+        save( "tmp/img/actnow-change-$(p1)-facet.png", cp3 )
+        println( io, "<td><img src='img/actnow-change-$(p1)-scatter.svg' width='300' height='300' class='img-thumbnail' alt='...'/></td>")
+        println( io, "<td>Combined Scatter Plot</td><td><a href='img/actnow-change-$(p1)-scatter.png'>PNG</a><td><a href='img/actnow-$(p1)-scatter.svg'>SVG</a> </td>")
+        println( io, "<td>Combined Scatter Plot With Regressions</td><td><a href='img/actnow-change-$(p1)-scatter-linear.png'>PNG</a></td><td><a href='img/actnow-change-$(p1)-scatter-linear.svg'>SVG</a></td>")
+        println( io, "<td>Facet Plot With Regression Lines</a></td><td><a href='img/actnow-change-$(p1)-facet.png'>PNG</a></td><td><a href='img/actnow-change-$(p1)-facet.svg'>SVG</a></td>")
+        println( io, "</tr>")
+        println( io, "</tbody></table>")
+        println( io, "</section>")
+    end
     close(io)
 end
 
