@@ -970,13 +970,16 @@ end
 
 function draw_change_vs_score( df::DataFrame, pol :: Symbol ) :: Tuple
     # dall = df[df]
-    dall = df
     policy = Symbol("$(pol)_change")
     treat = Symbol("$(pol)_which_treat_label")
     score = Symbol("$(pol)_overall_score")
+    ppre = Symbol("$(pol)_pre")
+    vpre = df[!,ppre]
+    dall = df[ vpre .< 95, : ]
+
     label1 = "Change in Preference for "*lpretty( pol )
     label2 = "Rating of argument"
-    title = "$(label1) vs $(label2)"
+    title = "$(label1) vs $(label2) - Pre Scores of < 95 only"
     arg_label = "Which Argument"
     ddf = data(dall)
     spec1 = ddf * 
