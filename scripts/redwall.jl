@@ -22,7 +22,13 @@ using .Utils
 DATA_DIR="/mnt/data/ActNow/Surveys/live/"
 
 # FIXME use this consistently
-const TREATMENT_TYPES = ["relgains", "security", "absgains", "other_argument"]
+const TREATMENT_TYPESDICT = Dict([
+    "relgains" => "Relative Gains", 
+    "security" => "Security", 
+    "absgains" => "Absolute Gains", 
+    "other_argument" => "Other Argument"])
+
+const TREATMENT_TYPES = collect((keys( TREATMENT_TYPESDICT )))
 
 const MAIN_EXPLANDICT = Dict([
     # "x" => "No Main Expanatory Variable",
@@ -245,10 +251,12 @@ function merge_treats!( dall :: DataFrame, label::String )
     n = size( dall )[1]
     dall[:,"$(label)_overall_score"] = zeros(n)
     dall[:,"$(label)_which_treat"] = fill("",n)
+    dall[:,"$(label)_which_treat_label"] = fill("",n)
     for i in 1:n
         for t in TREATMENT_TYPES
             if ! ismissing( dall[i,"$(label)_treat_$(t)_score"])
                 dall[ i, "$(label)_which_treat" ] = t
+                dall[ i, "$(label)_which_treat_label" ] = TREATMENT_TYPESDICT[t]
                 dall[ i, "$(label)_overall_score" ] = dall[i,"$(label)_treat_$(t)_score"]
             end
         end
@@ -949,9 +957,52 @@ function draw_policies2( df::DataFrame, pol1 :: Symbol, pol2 :: Symbol ) :: Tupl
     s1,s2,s3 
 end
 
-function draw_change_vs_score( df::DataFrame, pol :: Symbol ) :: Tuple
-    policy = "x"
+"""
+Draw our scatter plots with the parties colo[u]red in.
+"""
+function draw_change_scat( scatter, title )
+    axis = (width = 1200, height = 800, title=title)
+    return draw(scatter, 
+        scales( Color=(; palette=[:firebrick4,:orangered3,:teal,:grey,:darkorchid4] )),
+        axis=axis, 
+        legend=(; title="Argument Presented"))
+end
 
+function draw_change_vs_score( df::DataFrame, pol :: Symbol ) :: Tuple
+    # dall = df[df]
+    dall = df
+    policy = Symbol("$(pol)_change")
+    treat = Symbol("$(pol)_which_treat_label")
+    score = Symbol("$(pol)_overall_score")
+    label1 = "Change in Preference for "*lpretty( pol )
+    label2 = "Rating of argument"
+    title = "$(label1) vs $(label2)"
+    arg_label = "Which Argument"
+    ddf = data(dall)
+    spec1 = ddf * 
+        mapping( 
+            score=>label2,
+            policy=>label1 ) * 
+        mapping( color=treat=>arg_label) *
+        visual(Scatter)
+    spec2 = ddf * 
+        mapping( 
+            score=>label2,
+            policy=>label1 ) * 
+        mapping( color=treat=>arg_label) *
+        (visual(Scatter) + linear(interval = nothing))
+    spec3 = ddf * 
+        mapping( 
+            score=>label2,
+            policy=>label1 ) * 
+        mapping( layout=treat=>arg_label) *
+        mapping( color=treat=>arg_label) * 
+        (linear() + visual(Scatter))
+
+    s1 = draw_change_scat( spec1, title )
+    s2 = draw_change_scat( spec2, title )
+    s3 = draw_change_scat( spec3, title )
+    s1,s2,s3
 end
 
 """
