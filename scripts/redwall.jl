@@ -28,7 +28,12 @@ const MAIN_EXPLANDICT = Dict([
     "unsatisfied_with_income" => "Unsatisfied with Income (Q66.11 in 1,2,3)",
     "Owner_Occupier" => "Owner Occupier, inc. with a Mortgage (Q66.8=yes)", 
     "down_the_ladder" => "Low Life Satisfaction (Q66.12 - Life Ladder in 1..4)",
-    "not_managing_financially" => "Not Managing Well Financially (Q66.10 in 4,5)"])
+    "not_managing_financially" => "Not Managing Well Financially (Q66.10 in 4,5)",
+    "At_Risk_of_Destitution" => "Risk Of Destitution (Q66.9_1)",
+    "General_Health" => "General Health (Q66.13)",    
+    "Ladder" => "Life Ladder (Q66.12)",
+    "Satisfied_With_Income"=>"Satsified with Income (Q66.11)",
+    "Managing_Financially"=>"Managing Finacially (Q66.10)"])
 
 const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 
@@ -161,6 +166,19 @@ form( v :: Integer, i, j ) = "$v"
 form( v :: Number, i, j ) = Format.format(v; precision=2, commas=true )
 
 """
+Hacky p-values cols in stats tables.
+"""
+function pform( v :: Any, r, c)
+    if ! (typeof( v ) <: Number)
+        return form(v,r,c)
+    elseif c in [8,18,20]
+        s = Format.format(v; precision=4 )
+        return "($s)"
+    end
+    return Format.format(v; precision=2, commas=true )
+end
+
+"""
 Correlation matrix for the policies
 """
 function corrmatrix( df, keys, pre_or_post = "_pre" ) :: Tuple
@@ -170,20 +188,22 @@ function corrmatrix( df, keys, pre_or_post = "_pre" ) :: Tuple
     targets = df[:,corrtars]
     corrs = pairwise( cor, eachcol(targets); symmetric=true )
     pvals = pvalue.(pairwise(CorrelationTest, eachcol(targets); symmetric=true ))
-    # corrs = convert(Array{Union{Float64,Missing}},corrs)    
+    corrs = convert(Array{Union{Float64,Missing}},corrs)    
+    pvals = convert(Array{Union{Float64,Missing}},pvals)    
     println(corrs)
-    #=
     for r in 1:n
         for c in (r+1):n
             corrs[r,c] = missing
+            pvals[r,c] = missing
         end
-    end
-    =#
+    end  
     labels = lpretty.(keys)
-    df = DataFrame( corrs, labels )
-    df." " = labels
-    degrees_of_freedom = size(df)[2] - 2
-    df, pvals, degrees_of_freedom
+    cord = DataFrame( corrs, labels )
+    pvals = DataFrame( pvals, labels )
+    cord." " = labels
+    pvals." " = labels
+    degrees_of_freedom = size(df)[1] - 2
+    cord, pvals, degrees_of_freedom
 end
 
 
@@ -222,7 +242,7 @@ function create_one!(
 end
 
 """
-Hacky fix of incomew were some people seem to have entered in £000s rather than £s
+Hacky fix of income where some people seem to have entered in £000s rather than £s
 """
 function recode_income( inc )
     return if ismissing( inc )
@@ -232,6 +252,21 @@ function recode_income( inc )
     else
         inc
   end
+end
+
+#
+# convoluted stuff to get RegressionTables to print p- values under the coefficients, since
+# that isn't one of the defaults.
+# I don't really understand this!
+# See: https://jmboehm.github.io/RegressionTables.jl/stable/regression_statistics/#RegressionTables.AbstractUnderStatistic
+# and the RegressionTables.jl source code.
+#
+struct PValue <: RegressionTables.AbstractUnderStatistic
+    val::Float64
+end
+
+function PValue(rr::RegressionModel, k::Int; vargs...)
+    PValue(RegressionTables._pvalue(rr)[k])
 end
 
 #
@@ -489,15 +524,15 @@ function run_regressions_by_mainvar( dall::DataFrame, mainvar :: Symbol )
         push!( diffregs, reg )
     end 
     labels = make_labels()
-    regtable(regs...;file="tmp/actnow-$(mainvar)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/actnow-simple-$(mainvar)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(diffregs...;file="tmp/actnow-change-$(mainvar)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.txt",number_regressions=false, stat_below = true, render=AsciiTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.txt",number_regressions=true, stat_below = false, render=AsciiTable(), labels=labels)
-    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.txt",number_regressions=true, stat_below = false, render=AsciiTable(), labels=labels)
-    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
-    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
+    regtable(regs...;file="tmp/actnow-$(mainvar)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels, below_statistic = TStat )
+    regtable(simpleregs...;file="tmp/actnow-simple-$(mainvar)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels, below_statistic = PValue)
+    regtable(diffregs...;file="tmp/actnow-change-$(mainvar)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
 end # run_regressions_by_mainvar
 
 """
@@ -544,15 +579,15 @@ function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
         push!( diffregs, reg )
     end 
     labels = make_labels()
-    regtable(regs...;file="tmp/actnow-$(policy)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/actnow-simple-$(policy)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(diffregs...;file="tmp/actnow-change-$(policy)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels)
-    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.txt",number_regressions=false, stat_below = true, render=AsciiTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.txt",number_regressions=true, stat_below = false, render=AsciiTable(), labels=labels)
-    regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.txt",number_regressions=true, stat_below = false, render=AsciiTable(), labels=labels)
-    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
-    regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.tex",number_regressions=true, stat_below = false, render=LatexTable(), labels=labels)
+    regtable(regs...;file="tmp/actnow-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/actnow-simple-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
+    regtable(diffregs...;file="tmp/actnow-change-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
 end # run_regressions_by_policy
 
 function edit_table( io, tablename )
@@ -681,7 +716,7 @@ function make_big_file_by_policy()
         exvar = lpretty( policy ) * " (Before Explanation)"
         # exvar = MAIN_EXPLANDICT[Symbol(mainvar)]
         notes1 = """
-        <p>
+        <p>p- values in parenthesis.
         Results are relative to:
         </p>
         <ul>
@@ -692,6 +727,7 @@ function make_big_file_by_policy()
         </ul>
         """
         notes2 = """
+        <p>p- values in parenthesis. 
         Results are Relative to:
         <ul>
             <li>Shown Absolute Gains Argument;</li>
@@ -896,11 +932,13 @@ function run_regressions( dall :: DataFrame )
     end
 end
 
+
 """
 Make a pile of summary statistics and histograms
 """
 function summarystats( dall :: DataFrame ) :: NamedTuple
     n = 100
+    # haters - scoring pre below 30; lovers scoring over 70 pre
     df = DataFrame( 
         name = fill("",n), 
         mean_pre=zeros(n), 
@@ -909,18 +947,25 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
         mean_post=zeros(n), 
         median_post=zeros(n), 
 
+        average_change = zeros(n),
+        overall_p = zeros(n),
+
         avlove_pre = zeros(n),
         avhate_pre = zeros(n),
+
         nlovers_pre = zeros(n),
         nhaters_pre = zeros(n),
 
-        nhaters_post = zeros(n),
         nlovers_post = zeros(n),
+        nhaters_post = zeros(n),
+
         avlove_post = zeros(n),
         avhate_post = zeros(n),
-        average_change = zeros(n),
+        
+        change_amongst_lovers = zeros(n),
+        lovers_p = zeros(n),
         change_amongst_haters = zeros(n),
-        change_amongst_lovers = zeros(n) )
+        haters_p = zeros(n))
     i = 0
     w = dall.probability_weight
     plots = Dict()
@@ -933,20 +978,21 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
         vpost = dall[!,ppost]                
         haters_pre = dall[vpre .< 30, : ]
         lovers_pre = dall[vpre .> 70, : ]
-        nhaters_pre = sum( haters_pre.probability_weight )
-        nlovers_pre = sum( lovers_pre.probability_weight )
-        haters_post = dall[vpost .< 30, : ]
+        nhaters_pre = sum( haters_pre.probability_weight )*100
+        nlovers_pre = sum( lovers_pre.probability_weight )*100
+        haters_post = dall[vpost .< 30, : ] 
         lovers_post = dall[vpost .> 70, : ]
-        nhaters_post = sum( haters_post.probability_weight )
-        nlovers_post = sum( lovers_post.probability_weight )
+        nhaters_post = sum( haters_post.probability_weight )*100
+        nlovers_post = sum( lovers_post.probability_weight )*100
         # 
-        avlove_pre = sum( lovers_pre[!,ppre] .* lovers_pre.probability_weight ) / nlovers_pre
-        avhate_pre = sum( haters_pre[!,ppre] .* haters_pre.probability_weight ) / nhaters_pre
+        avlove_pre = 100*sum( lovers_pre[!,ppre] .* lovers_pre.probability_weight ) / nlovers_pre
+        avhate_pre = 100*sum( haters_pre[!,ppre] .* haters_pre.probability_weight ) / nhaters_pre
+
 
         # change in love/hate among the top 30/bottom 30 of those who loved/hated pre
         # so the post columns from the pre-sub
-        avlove_post = sum( lovers_pre[!,ppost] .* lovers_pre.probability_weight ) / nlovers_pre
-        avhate_post = sum( haters_pre[!,ppost] .* haters_pre.probability_weight ) / nhaters_pre
+        avlove_post = 100*sum( lovers_pre[!,ppost] .* lovers_pre.probability_weight ) / nlovers_pre
+        avhate_post = 100*sum( haters_pre[!,ppost] .* haters_pre.probability_weight ) / nhaters_pre
 
         hs = fit(Histogram, vpre, w )
         hsp = plot( hs )
@@ -969,6 +1015,14 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
         df.nhaters_post[i] = nhaters_post
 
         df.change_amongst_haters[i] = avhate_post - avhate_pre
+        # OneSampleTTest
+        df.overall_p[i] = pvalue(
+            EqualVarianceTTest( dall[ !, ppost ], dall[!, ppre ] )) # paired t-test
+        df.lovers_p[i] = pvalue(
+            EqualVarianceTTest( lovers_pre[ !, ppost ], lovers_pre[!, ppre ] )) # paired t-test
+        df.haters_p[i] = pvalue(
+            EqualVarianceTTest( haters_pre[ !, ppost ], haters_pre[!, ppre ] )) # paired t-test
+        
         df.change_amongst_lovers[i] = avlove_post - avlove_pre
     end
     df.average_change = df.mean_post - df.mean_pre
@@ -996,8 +1050,8 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
             plots[p] = draw(barc)
         end
     end
-    correlations = corrmatrix( dall, POLICIES )
-    (; summarystats = df[1:i,:], plots, hists, correlations, discretevars, non_discretevars )
+    correlations, pvals, degrees_of_freedom = corrmatrix( dall, POLICIES )
+    (; summarystats = df[1:i,:], plots, hists, correlations, discretevars, non_discretevars, pvals, degrees_of_freedom )
 end
 
 function make_and_print_summarystats( dall :: DataFrame )
@@ -1007,10 +1061,31 @@ function make_and_print_summarystats( dall :: DataFrame )
     t = pretty_table( 
         io,
         d.summarystats; 
-        formatters=( form ), 
-        header = ( ["Variable","Mean", "Median", "Mean (After argument)", "Median (After)", "Standard Deviation"]),
+        formatters=( pform, form ), 
+        header = ( [
+            "Variable",
+            "Mean (Before)",
+            "Median (Before)",
+            "Standard Deviation (Before)",
+            "Mean (After)",
+            "Median (After)",
+            "Average Change In Score",   
+            "(p)", 
+            "Policy Lovers (Before Score Over 70): Av Score",        
+            "Policy Haters (Before Score Under 30): Av Score",        
+            "Lovers - % (Before)",
+            "Haters - % (Before)",
+            "Lovers - % (After)",
+            "Haters - % (After)",
+            "Lovers Average Score (After)",
+            "Haters Average Score (After)",
+            "Lovers - Average Change in Score",
+            "(p)", 
+            "Haters - Average Change in Score",
+            "(p)"] ),
         table_class="table table-sm table-striped table-responsive", 
         backend = Val(:html))
+    println( io, "<p><em>Note - p-values are for difference in pre-post mean scores - pairwise tests give smaller p- values.</em></p>")
     println( io, "<h3>Correlations between Popularity of Policies</h3>")
     t = pretty_table( 
         io,
@@ -1019,6 +1094,15 @@ function make_and_print_summarystats( dall :: DataFrame )
         formatters=( form ), 
         table_class="table table-sm table-striped  table-responsive", 
         backend = Val(:html))
+    println( io, "<h3>P-Values for The Correlations</h3>")
+    t = pretty_table( 
+        io,
+        d.pvals; 
+        header = (["Basic Income","Green New Deal", "Utilities", "Health", "Childcare", "Education", "Housing", "Transport", "Democracy", "Tax", ""]),
+        formatters=( form ), 
+        table_class="table table-sm table-striped  table-responsive", 
+        backend = Val(:html))
+    println( io, "<p>Correlation Degrees of Freedom: (just sample size - 2) <b>$(d.degrees_of_freedom)</b></p>")
     println( io, "<div class='row border border-primary'>")
     c = 0
     for v in d.discretevars 
