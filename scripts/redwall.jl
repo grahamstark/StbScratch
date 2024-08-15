@@ -21,6 +21,9 @@ using .Utils
 
 DATA_DIR="/mnt/data/ActNow/Surveys/live/"
 
+# FIXME use this consistently
+const TREATMENT_TYPES = ["relgains", "security", "absgains", "other_argument"]
+
 const MAIN_EXPLANDICT = Dict([
     # "x" => "No Main Expanatory Variable",
     "destitute"=>"At Risk Of Destitution (Q66.9_1 is 70 and over)", 
@@ -33,7 +36,9 @@ const MAIN_EXPLANDICT = Dict([
     "General_Health" => "General Health (Q66.13)",    
     "Ladder" => "Life Ladder (Q66.12)",
     "Satisfied_With_Income"=>"Satsified with Income (Q66.11)",
-    "Managing_Financially"=>"Managing Finacially (Q66.10)"])
+    "Managing_Financially"=>"Managing Finacially (Q66.10)",
+    "gad_7" => "GAD-7 Generalized Anxiety Disorder 7",
+    "phq_8" => "PHQ-8 Personal Health Questionnaire Depression Scale"])
 
 const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 
@@ -95,6 +100,31 @@ const RENAMES = Dict(
 
 const RENAMES_REV = Dict( values(RENAMES) .=> keys(RENAMES))
 
+#= 
+# renaming was dumb
+# sum over these for GAD-7 Generalized Anxiety Disorder 7",
+  and PHQ-8 Personal Health Questionnaire Depression Scale"
+=#
+const PHQ_8 = [
+    "Anxious",
+    "Uncontrolled_Worry",
+    "Worrying_To_Much",
+    "Trouble_Relaxing",
+    "Restless_Cant_Sit_Still",
+    "Easily_Annoyed",
+    "Afraid" ]
+
+const GAD_7 = [
+    "Little_interest_in_things",
+    "Depressed",
+    "Trouble_Sleeping",
+    "No_Energy",
+    "Poor_Appetite",
+    "Feeling_Failure",
+    "Trouble_Concentrating",
+    "More_Restless_Than_Usual" ]
+
+
 function lpretty( s :: AbstractString ) :: String
     o = pretty( s )
     v = get(RENAMES_REV,s,"")
@@ -143,6 +173,8 @@ const SUMMARY_VARS = ["Age",
     "Think_About_Future",
     "In_Control_Of_Life",
     "Life_Satisfaction",
+    "gad_7",
+    "phq_8"
     # "Change_in_circumstance"
     ]
 
@@ -206,6 +238,22 @@ function corrmatrix( df, keys, pre_or_post = "_pre" ) :: Tuple
     cord, pvals, degrees_of_freedom
 end
 
+"""
+Produce a single column with which treatment and the score
+"""
+function merge_treats!( dall :: DataFrame, label::String )
+    n = size( dall )[1]
+    dall[:,"$(label)_overall_score"] = zeros(n)
+    dall[:,"$(label)_which_treat"] = fill("",n)
+    for i in 1:n
+        for t in TREATMENT_TYPES
+            if ! ismissing( dall[i,"$(label)_treat_$(t)_score"])
+                dall[ i, "$(label)_which_treat" ] = t
+                dall[ i, "$(label)_overall_score" ] = dall[i,"$(label)_treat_$(t)_score"]
+            end
+        end
+    end
+end
 
 """
 This convoluted function creates a bunch or binary variables in the dataframe `dall` for some question and treatments.
@@ -221,13 +269,22 @@ function create_one!(
     initialq :: String, 
     finalq :: String, 
     treatqs :: Vector{String} )
+    #
     dall[:,"$(label)_treat_absgains_v"] = dall[:,"$(treatqs[1])"]
-    
+    #
     # identify subsets who heard the absolute/relative/security arguments
     dall[:,"$(label)_treat_absgains"] = ( .! ismissing.( dall[:,"$(treatqs[1])"] ) )
     dall[:,"$(label)_treat_relgains"] = ( .! ismissing.( dall[:,"$(treatqs[2])"] ) )
     dall[:,"$(label)_treat_security"] = ( .! ismissing.( dall[:,"$(treatqs[3])"] ) )
     dall[:,"$(label)_treat_other_argument"] = ( .! ismissing.( dall[:,"$(treatqs[4])"] ) )
+
+    dall[:,"$(label)_treat_absgains_score"] = dall[:,"$(treatqs[1])"]
+    dall[:,"$(label)_treat_relgains_score"] = dall[:,"$(treatqs[2])"]
+    dall[:,"$(label)_treat_security_score"] = dall[:,"$(treatqs[3])"]
+    dall[:,"$(label)_treat_other_argument_score"] = dall[:,"$(treatqs[4])"]
+
+
+
     rename!( dall, Dict(initialq => "$(label)_pre", (finalq => "$(label)_post" )))
     # change after hearing argument
     dall[:,"$(label)_change"] = dall[:,"$(label)_post"] - dall[:,"$(label)_pre"]
@@ -239,6 +296,8 @@ function create_one!(
     dall[:,"$(label)_treat_relgains_destitute"] = dall.destitute .* dall[:,"$(label)_treat_relgains"]
     dall[:,"$(label)_treat_security_destitute"] = dall.destitute .* dall[:,"$(label)_treat_security"]
     dall[:,"$(label)_treat_other_argument_destitute"] = dall.destitute .* dall[:,"$(label)_treat_other_argument"]
+
+    merge_treats!( dall, label )
 end
 
 """
@@ -252,6 +311,25 @@ function recode_income( inc )
     else
         inc
   end
+end
+
+const DEPLEVELS = [
+    "Not at all",
+    "Several days",
+    "More than half the days",
+    "Nearly every day" ]
+
+function health_score( p :: DataFrameRow, keys... )::Int
+
+    function map_one( s :: AbstractString )::Int
+        findfirst(x->x==s,DEPLEVELS) - 1 
+    end
+
+    i = 0
+    for k in keys
+        i += map_one( p[k])
+    end
+    return i
 end
 
 #
@@ -345,7 +423,7 @@ end
 
 """
 Create weights based on voting intention and age/sex groups.
-NOTE: 0.6-2.8 are the closed weights I can find that converge using constrained_chi_square.
+NOTE: 0.6-2.8 are the closesy weights I can find that converge using constrained_chi_square.
 """
 function reweight( 
     dall :: DataFrame, 
@@ -364,33 +442,29 @@ end
 
 
 function make_dataset()::DataFrame
-    dn = CSV.File("$(DATA_DIR)/national_censored.csv")|>DataFrame
-    dr = CSV.File("$(DATA_DIR)/red_censored.csv")|>DataFrame
-    dn.is_redwall .= false
-    dr.is_redwall .= true
-
-    dall = vcat(dn,dr)
-
-    CSV.write( "$(DATA_DIR)/national_censored.tab", dall; delim='\t')
 
     function recode_ethnic( ethnic :: AbstractString ) :: String
         return ethnic == "1. English, Welsh, Scottish, Northern Irish or British" ? "Ethnic British" : "Other Ethnic" 
     end
 
-    function recode_party( party :: AbstractString ) :: String
-        return if party in ["Conservative Party"]
-            "Conservative"
+    """
+    FIXME mess
+    """
+    function recode_party( party :: AbstractString; condensed :: Bool ) :: String
+        d = if party in ["Conservative Party"]
+            ("Conservative", "Conservative")
         elseif party in ["Green Party", "Plaid Cymru", "Scottish National Party"]
-            "Nat/Green"
+            ("Nat/Green","Other")
         elseif party in ["Labour Party"]
-            "Labour"
+            ("Labour","Labour")
         elseif party in ["Liberal Democrats"]
-            "LibDem"
+            ("LibDem","Other")
         elseif party in ["Other (please name below)", "Independent candidate","Brexit Party"]
-            "Other/Brexit"
+            ("Other/Brexit","Other")
         else 
-            "No Vote/DK/Refused"
+            ("No Vote/DK/Refused","Other")
         end
+        return condensed ? d[2] : d[1]
     end
 
     function recode_employment( employment :: AbstractString ) :: String
@@ -404,6 +478,15 @@ function make_dataset()::DataFrame
             "Not Working, Inc. Retired/Caring/Student"
         end
     end
+
+    dn = CSV.File("$(DATA_DIR)/national_censored.csv")|>DataFrame
+    dr = CSV.File("$(DATA_DIR)/red_censored.csv")|>DataFrame
+    dn.is_redwall .= false
+    dr.is_redwall .= true
+
+    dall = vcat(dn,dr)
+
+    CSV.write( "$(DATA_DIR)/national_censored.tab", dall; delim='\t')
 
     # needs to be done before renaming..
     # dall.old_or_destitute = (dall."Q66.2" .>= 50) .| (dall."Q66.9_1" .>= 70)
@@ -423,11 +506,15 @@ function make_dataset()::DataFrame
     rename!( dall, RENAMES )
     # dall = dall[dall.HH_Net_income_PA .> 0,:] # skip zeto incomes 
     dall = dall[(.! ismissing.(dall.HH_Net_Income_PA )) .& (dall.HH_Net_Income_PA .> 0),:]
-
+    n = size(dall)[1]
     dall.HH_Net_Income_PA .= recode_income.( dall.HH_Net_Income_PA)
     dall.ethnic_2 = recode_ethnic.( dall.Ethnic )
-    dall.last_election = recode_party.( dall.Party_Last_Election )
-    dall.next_election = recode_party.( dall.Party_Next_Election )
+
+    dall.last_election = recode_party.( dall.Party_Last_Election, condensed=false )
+    dall.last_election_condensed = recode_party.( dall.Party_Last_Election, condensed=true  )
+    dall.next_election =  recode_party.( dall.Party_Next_Election, condensed=false )
+    dall.next_election_condensed .= recode_party.( dall.Party_Next_Election, condensed=true )
+
     dall.employment_2 = recode_employment.(dall.Employment_Status)
     dall.log_income = log.(dall.HH_Net_Income_PA)
     dall.age_sq = dall.Age .^2
@@ -444,7 +531,8 @@ function make_dataset()::DataFrame
         ["5. Finding it very difficult", "4.\tFinding it quite difficult"], )
     dall.down_the_ladder = dall.Ladder .<= 4
     # rename!( dall, ["last_election"=>"Party Vote Last Election"])
-
+    dall.gad_7 = health_score.(eachrow(dall), GAD_7...)
+    dall.phq_8 = health_score.(eachrow(dall), PHQ_8...)
     #
     # Dump modified data
     #
@@ -578,16 +666,29 @@ function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
         reg = lm( @eval(@formula( $(depvar) ~ Gender + $(relgains) + $(relflourish) + $(relsec) + $(mainvar))), dall )
         push!( diffregs, reg )
     end 
+    diffregs2=[]
+    reg = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relflourish) + $(relsec))), dall )
+    push!( diffregs2, reg )
+    for mainvar in MAIN_EXPLANVARS
+        reg = lm( @eval(@formula( $(depvar) ~ $(relgains) + $(relflourish) + $(relsec) + $(mainvar))), dall )
+        push!( diffregs2, reg )
+    end 
+    # 
     labels = make_labels()
     regtable(regs...;file="tmp/actnow-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
     regtable(simpleregs...;file="tmp/actnow-simple-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
     regtable(diffregs...;file="tmp/actnow-change-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
+    regtable(diffregs2...;file="tmp/actnow-change-sexless-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
+    #
     regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
     regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
     regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
+    regtable(diffregs2...;file="tmp/regressions/actnow-change-$(policy)-sexless-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
+    #    
     regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
     regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
     regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
+    regtable(diffregs2...;file="tmp/regressions/actnow-change-ssexless-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
 end # run_regressions_by_policy
 
 function edit_table( io, tablename )
@@ -660,6 +761,15 @@ function make_big_file_by_explanvar()
         println(io, notes2 )    
         fnl = "regressions/actnow-change-$(mainvar)-ols"
         println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
+
+        println( io, "<h3>Change in Popularity Of Each Policy - Minus Gender: By Argument</h3>")
+        fn = "tmp/actnow-change-sexless-$(mainvar)-ols.html"
+        edit_table( io, fn )    
+        println(io, notes2 )    
+        fnl = "regressions/actnow-change-sexless-$(mainvar)-ols"
+        println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
+
+
         println( io, "</section>")
     end
     println(io, "<section>")
@@ -755,6 +865,12 @@ function make_big_file_by_policy()
         println(io, notes2 )    
         fnl = "regressions/actnow-change-$(policy)-ols"
         println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
+        println( io, "<h3>Change in Popularity Of Policy: Genderless By Argument</h3>")
+        fn = "tmp/actnow-change-sexless-$(policy)-ols.html"
+        edit_table( io, fn )    
+        println(io, notes2 )    
+        fnl = "regressions/actnow-change-sexless-$(policy)-ols"
+        println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
         println( io, "</section>")
     end
     println(io, "<section id='chart-gallery'>")
@@ -831,6 +947,11 @@ function draw_policies2( df::DataFrame, pol1 :: Symbol, pol2 :: Symbol ) :: Tupl
 
     f = Figure()
     s1,s2,s3 
+end
+
+function draw_change_vs_score( df::DataFrame, pol :: Symbol ) :: Tuple
+    policy = "x"
+
 end
 
 """
@@ -932,6 +1053,53 @@ function run_regressions( dall :: DataFrame )
     end
 end
 
+function score_summarystats( dall :: DataFrame ) :: DataFrame
+    n = length( POLICIES )*3
+    df = DataFrame(
+        name = fill("",n),
+        subname = fill("",n),
+        relgains_mean= zeros(n),
+        relgains_median = zeros(n),
+        security_mean= zeros(n),
+        security_median = zeros(n),
+        absgains_mean= zeros(n),
+        absgains_median = zeros(n),
+        other_argument_mean= zeros(n),
+        other_argument_median = zeros(n))
+    i = 0
+    for p in POLICIES
+        for group in ["All","Lovers","Haters"]
+            i += 1
+            ppre = Symbol("$(p)_pre")
+            vpre = dall[!,ppre]
+            ppost = Symbol("$(p)_post")
+            vpost = dall[!,ppost]                
+            dallg = if group == "All"
+                dall
+            elseif group == "Lovers"
+                dall[vpre .> 70, : ]
+            elseif group == "Haters"
+                dall[vpre .< 30, : ]
+            end
+            for t in TREATMENT_TYPES
+                k = Symbol( "$(p)_treat_$(t)_score" ) # e.g. :basic_income_treat_absgains_score
+                subd = dallg[ .! ismissing.(dallg[!,k]),[k,:probability_weight]] # e.g. just those reporting a score for politics, absgains argument, and so on
+                a = mean( subd[!,k], subd.probability_weight )
+                println( "$k = a=$a")
+                m = median( Float64.(subd[!,k]), subd.probability_weight )
+                println( "m = $m")
+                ak = Symbol( "$(t)_mean")
+                mk = Symbol( "$(t)_median")
+                df[i,:name] = lpretty(p) 
+                df[i,:subname] = group
+                df[i,ak] = a
+                df[i,mk] = m
+            end
+        end
+    end
+    rename!( df, lpretty.( names( df )))
+    df
+end
 
 """
 Make a pile of summary statistics and histograms
@@ -965,7 +1133,11 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
         change_amongst_lovers = zeros(n),
         lovers_p = zeros(n),
         change_amongst_haters = zeros(n),
-        haters_p = zeros(n))
+        haters_p = zeros(n),
+        nzeros_pre = zeros(n),
+        nhundreds_pre = zeros(n),
+        nzeros_post = zeros(n),
+        nhundreds_post = zeros(n))
     i = 0
     w = dall.probability_weight
     plots = Dict()
@@ -978,6 +1150,12 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
         vpost = dall[!,ppost]                
         haters_pre = dall[vpre .< 30, : ]
         lovers_pre = dall[vpre .> 70, : ]
+
+        df.nzeros_pre[i] = sum( dall[vpre .== 0,:probability_weight])*100
+        df.nzeros_post[i] = sum( dall[vpost .== 0,:probability_weight])*100
+        df.nhundreds_pre[i] = sum( dall[vpre .== 100,:probability_weight])*100
+        df.nhundreds_post[i] = sum( dall[vpost .== 100,:probability_weight])*100
+
         nhaters_pre = sum( haters_pre.probability_weight )*100
         nlovers_pre = sum( lovers_pre.probability_weight )*100
         haters_post = dall[vpost .< 30, : ] 
@@ -1051,7 +1229,8 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
         end
     end
     correlations, pvals, degrees_of_freedom = corrmatrix( dall, POLICIES )
-    (; summarystats = df[1:i,:], plots, hists, correlations, discretevars, non_discretevars, pvals, degrees_of_freedom )
+    scores = score_summarystats( dall  )
+    (; summarystats = df[1:i,:], plots, hists, correlations, discretevars, non_discretevars, pvals, degrees_of_freedom, scores )
 end
 
 function make_and_print_summarystats( dall :: DataFrame )
@@ -1082,11 +1261,24 @@ function make_and_print_summarystats( dall :: DataFrame )
             "Lovers - Average Change in Score",
             "(p)", 
             "Haters - Average Change in Score",
-            "(p)"] ),
+            "(p)",
+            "0 scores % (Before)",
+            "100 scores % (Before)",
+            "0 scores % (After)",
+            "100 scores % (After)"] ),
         table_class="table table-sm table-striped table-responsive", 
         backend = Val(:html))
-    println( io, "<p><em>Note - p-values are for difference in pre-post mean scores - pairwise tests give smaller p- values.</em></p>")
-    println( io, "<h3>Correlations between Popularity of Policies</h3>")
+    println( io, "<p><em>Note - p-values are for difference in pre-post mean scores - pairwise tests give smaller p- values.</em></p>")    
+    #
+    println( io, "<h3>Scores for Each Policy Argument</h3>")    
+    t = pretty_table( 
+        io,
+        d.scores; 
+        formatters=( form ), 
+        table_class="table table-sm table-striped  table-responsive", 
+        backend = Val(:html))
+    #
+    println( io, "<h3>Correlations between Popularity of Policies</h3>")    
     t = pretty_table( 
         io,
         d.correlations; 
@@ -1152,6 +1344,10 @@ end
 
 
 dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
+#
+# Cast weights to StatsBase weights type.
+#
 dall.weight = Weights(dall.weight)
 dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
+
 
