@@ -44,7 +44,11 @@ const MAIN_EXPLANDICT = Dict([
     "Satisfied_With_Income"=>"Satsified with Income (Q66.11)",
     "Managing_Financially"=>"Managing Finacially (Q66.10)",
     "gad_7" => "GAD-7 Generalized Anxiety Disorder 7",
-    "phq_8" => "PHQ-8 Personal Health Questionnaire Depression Scale"])
+    "phq_8" => "PHQ-8 Personal Health Questionnaire Depression Scale",
+    "sqrt_gad_7" => "Square Root of GAD-7 Generalized Anxiety Disorder 7",
+    "sqrt_phq_8" => "Square Root of PHQ-8 Personal Health Questionnaire Depression Scale",
+
+    ])
 
 const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 
@@ -541,6 +545,9 @@ function make_dataset()::DataFrame
     # rename!( dall, ["last_election"=>"Party Vote Last Election"])
     dall.gad_7 = health_score.(eachrow(dall), GAD_7...)
     dall.phq_8 = health_score.(eachrow(dall), PHQ_8...)
+    dall.sqrt_gad_7 = sqrt.(dall.gad_7)
+    dall.sqrt_phq_8 = sqrt.(dall.phq_8)
+    
     #
     # Dump modified data
     #
@@ -641,6 +648,7 @@ function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
     #
     regs=[]
     simpleregs = []
+    very_simpleregs = []
     depvar = Symbol( "$(policy)_pre")
     relgains = Symbol( "$(policy)_treat_relgains" )
     relsec =Symbol( "$(policy)_treat_security" )
@@ -662,6 +670,9 @@ function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
         reg = lm( @eval(@formula( $(depvar) ~ 
             Age + Gender + $( mainvar ))), dall)
         push!( simpleregs, reg )
+        reg = lm( @eval(@formula( $(depvar) ~ 
+            $( mainvar ))), dall)
+        push!( very_simpleregs, reg )
     end 
     #
     # regression of change in popularity of each policy against each explanation
@@ -685,16 +696,19 @@ function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
     labels = make_labels()
     regtable(regs...;file="tmp/actnow-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
     regtable(simpleregs...;file="tmp/actnow-simple-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
+    regtable(very_simpleregs...;file="tmp/actnow-very-simple-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
     regtable(diffregs...;file="tmp/actnow-change-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
     regtable(diffregs2...;file="tmp/actnow-change-sexless-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
     #
     regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
     regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
+    regtable(very_simpleregs...;file="tmp/regressions/actnow-very-simple-$(policy)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
     regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
     regtable(diffregs2...;file="tmp/regressions/actnow-change-$(policy)-sexless-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
     #    
     regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
     regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
+    regtable(very_simpleregs...;file="tmp/regressions/actnow-very-simple-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
     regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
     regtable(diffregs2...;file="tmp/regressions/actnow-change-ssexless-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
 end # run_regressions_by_policy
@@ -762,7 +776,7 @@ function make_big_file_by_explanvar()
         edit_table( io, fn )
         fnl = "regressions/actnow-simple-$(mainvar)-ols"
         println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
-        #
+        # 
         println( io, "<h3>Change in Popularity Of Each Policy: By Argument</h3>")
         fn = "tmp/actnow-change-$(mainvar)-ols.html"
         edit_table( io, fn )    
@@ -865,6 +879,12 @@ function make_big_file_by_policy()
         fn = "tmp/actnow-simple-$(policy)-ols.html"
         edit_table( io, fn )
         fnl = "regressions/actnow-simple-$(policy)-ols"
+        println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
+        #
+        println( io, "<h3>Popularity of Policy: 3): Very Short Regressions</h3>")
+        fn = "tmp/actnow-very-simple-$(policy)-ols.html"
+        edit_table( io, fn )
+        fnl = "regressions/actnow-very-simple-$(policy)-ols"
         println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
         #
         println( io, "<h3>Change in Popularity Of Policy: By Argument</h3>")
@@ -1425,5 +1445,3 @@ dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFram
 #
 dall.weight = Weights(dall.weight)
 dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
-
-
