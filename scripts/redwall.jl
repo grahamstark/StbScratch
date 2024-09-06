@@ -9,10 +9,11 @@ using AlgebraOfGraphics,
     DataFrames,
     Format,
     GLM,
+    HypothesisTests,
+    MultivariateStats,
     PrettyTables,
     RegressionTables,
     StatsBase,
-    HypothesisTests,
     SurveyDataWeighting,
     Tidier
 
@@ -845,7 +846,8 @@ function make_big_file_by_policy()
     println(io,"</section'>")
     println(io, "<h2 id='regressions'>Regressions: by Policy</h2>")
     for policy in POLICIES 
-        exvar = lpretty( policy ) * " (Before Explanation)"
+        prettypol = lpretty( policy )
+        exvar = prettypol * " (Before Explanation)"
         # exvar = MAIN_EXPLANDICT[Symbol(mainvar)]
         notes1 = """
         <p>p- values in parenthesis.
@@ -868,32 +870,32 @@ function make_big_file_by_policy()
         """    
         println( io, "<section>")
         println( io, "<h2>Regressions - Policy: $exvar </h2>")
-        println( io, "<h3>Popularity of Policy: 1) Full Regression</h3>")
+        println( io, "<h3>Popularity of $prettypol: 1) Full Regression</h3>")
         fn = "tmp/actnow-$(policy)-ols.html"
         edit_table( io, fn )
         fnl = "regressions/actnow-$(policy)-ols"
         println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
         println( io, notes1 )
         #
-        println( io, "<h3>Popularity of Policy: 2): Short Regressions</h3>")
+        println( io, "<h3>Popularity of $prettypol: 2): Short Regressions</h3>")
         fn = "tmp/actnow-simple-$(policy)-ols.html"
         edit_table( io, fn )
         fnl = "regressions/actnow-simple-$(policy)-ols"
         println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
         #
-        println( io, "<h3>Popularity of Policy: 3): Very Short Regressions</h3>")
+        println( io, "<h3>Popularity of $prettypol: 3): Very Short Regressions</h3>")
         fn = "tmp/actnow-very-simple-$(policy)-ols.html"
         edit_table( io, fn )
         fnl = "regressions/actnow-very-simple-$(policy)-ols"
         println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
         #
-        println( io, "<h3>Change in Popularity Of Policy: By Argument</h3>")
+        println( io, "<h3>Change in Popularity of $prettypol: By Argument</h3>")
         fn = "tmp/actnow-change-$(policy)-ols.html"
         edit_table( io, fn )    
         println(io, notes2 )    
         fnl = "regressions/actnow-change-$(policy)-ols"
         println( io, "<p><a href='$(fnl).txt'>text version</a> | <a href='$(fnl).tex'>latex version</a></p>")
-        println( io, "<h3>Change in Popularity Of Policy: Genderless By Argument</h3>")
+        println( io, "<h3>Change in Popularity of $prettypol: Genderless By Argument</h3>")
         fn = "tmp/actnow-change-sexless-$(policy)-ols.html"
         edit_table( io, fn )    
         println(io, notes2 )    
@@ -914,6 +916,40 @@ end
 
 
 const POL_COLS = scale_color_manual( :blue,:red,:orange,:green,:grey,:purple )
+
+const BOOL_MAP = Dict(
+    [
+        "Yes" => :darkgreen,
+        "No"  => :red
+    ]
+)
+
+const GENDER_MAP = Dict(
+    [
+        "Male" => :lightblue
+        "Female" => :pink
+    ]
+)
+
+const ETHNIC_MAP = Dict(
+    [
+        "Ethnic British" => :grey,
+        "Other Ethnic" => :blue
+    ]
+)
+
+const POL_MAP = Dict([
+    "Conservative" => :blue,
+    "Other" => :grey,
+    "Labour" => :red,
+    "Nat/Green" => :green,
+    "LibDem" => :orange,
+    "No Vote/DK/Refused" => :lightgrey,
+    "Other/Brexit" => :darkgrey])
+
+function pol_col( party :: AbstractString, map::Dict )::Symbol
+    return get(map,string(party),:grey )
+end
 
 """
 Draw our scatter plots with the parties colo[u]red in.
@@ -1438,6 +1474,77 @@ function make_and_print_summarystats( dall :: DataFrame )
     close( io )
 end
 
+"""
+See: https://juliastats.org/MultivariateStats.jl/dev/pca/#Linear-Principal-Component-Analysis
+See: https://www.youtube.com/watch?v=FgakZw6K1QQ
+"""
+function do_basic_pca( dall :: DataFrame )::Tuple
+    pol = Symbol.(string.(POLICIES) .* "_pre")
+    data = Matrix( dall[!,pol] )'
+    M = fit(PCA, data; maxoutdim=3)
+    prediction = DataFrame( predict(M,data)',["PC1","PC2","PC3"])
+    M, data,prediction
+end
+
+function pca_graph( dall :: DataFrame )
+    f = Figure()
+    ax1 = Axis3(f[1,1],xlabel="PC1",ylabel="PC2", zlabel="PC3", title="Vote Last Election")
+    scatter!( 
+        ax1, 
+        dall.PC1, 
+        dall.PC2, 
+        dall.PC3;
+        markersize=3,
+        color=pol_col.( dall.last_election, ( POL_MAP,  ) ))
+    # Legend(f[1,2], collect(values( POL_MAP )), collect(keys( POL_MAP)), framevisible=false)
+    ax2 = Axis3(f[1,3],xlabel="PC1",ylabel="PC2", zlabel="PC3", title="Owner Occupier")
+    scatter!( 
+        ax2, 
+        dall.PC1, 
+        dall.PC2, 
+        dall.PC3;
+        markersize=3,
+        color=pol_col.( dall.Owner_Occupier, ( BOOL_MAP,  ) ))
+    # f[1,4] = Legend(f,ax2,"Owner-Occupier",framevisible=false)
+    ax3 = Axis3(f[2,1],xlabel="PC1",ylabel="PC2", zlabel="PC3", title="Ethnic")
+    scatter!( 
+        ax3, 
+        dall.PC1, 
+        dall.PC2, 
+        dall.PC3;
+        markersize=3,
+        color=pol_col.( dall.Ethnic, ( BOOL_MAP,  ) ))
+    # f[2,2] = Legend(f,ax3,"Ethnic",framevisible=false)
+    ax4 = Axis3(f[2,3],xlabel="PC1",ylabel="PC2", zlabel="PC3", title="Gender")
+    scatter!( 
+        ax4, 
+        dall.PC1, 
+        dall.PC2, 
+        dall.PC3;
+        markersize=3,
+        color=pol_col.( dall.Gender, ( GENDER_MAP,  ) ))
+    ax4 = Axis3(f[2,3],xlabel="PC1",ylabel="PC2", zlabel="PC3", title="Gender")
+    #f[2,4] = Legend(f,ax4,"Gender",framevisible=false)
+    f
+end
+
+
+function xxpca_graph( dall :: DataFrame )
+    ddf = AlgebraOfGraphics.data(dall)    
+    label1="PC1"
+    label2="PC2"
+    label3="PC3"
+    vote_label = "Voting Intention (January 2024)"
+    title="FF"
+    spec1 = ddf * 
+        mapping( 
+            :PC1=>label1, #:democracy_pre=>"Preference for Democratic Reform",
+            :PC2=>label2,
+            :PC3=>label3 ) * 
+        mapping(  color=:next_election=>vote_label) *
+        visual(Scatter)
+    return draw_pol_scat( spec1, title )
+end
 
 dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
 #
