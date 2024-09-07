@@ -1486,66 +1486,41 @@ function do_basic_pca( dall :: DataFrame )::Tuple
     M, data,prediction
 end
 
-function pca_graph( dall :: DataFrame )
-    f = Figure()
-    ax1 = Axis3(f[1,1],xlabel="PC1",ylabel="PC2", zlabel="PC3", title="Vote Last Election")
-    scatter!( 
-        ax1, 
-        dall.PC1, 
-        dall.PC2, 
-        dall.PC3;
-        markersize=3,
-        color=pol_col.( dall.last_election, ( POL_MAP,  ) ))
-    # Legend(f[1,2], collect(values( POL_MAP )), collect(keys( POL_MAP)), framevisible=false)
-    ax2 = Axis3(f[1,3],xlabel="PC1",ylabel="PC2", zlabel="PC3", title="Owner Occupier")
-    scatter!( 
-        ax2, 
-        dall.PC1, 
-        dall.PC2, 
-        dall.PC3;
-        markersize=3,
-        color=pol_col.( dall.Owner_Occupier, ( BOOL_MAP,  ) ))
-    # f[1,4] = Legend(f,ax2,"Owner-Occupier",framevisible=false)
-    ax3 = Axis3(f[2,1],xlabel="PC1",ylabel="PC2", zlabel="PC3", title="Ethnic")
-    scatter!( 
-        ax3, 
-        dall.PC1, 
-        dall.PC2, 
-        dall.PC3;
-        markersize=3,
-        color=pol_col.( dall.Ethnic, ( BOOL_MAP,  ) ))
-    # f[2,2] = Legend(f,ax3,"Ethnic",framevisible=false)
-    ax4 = Axis3(f[2,3],xlabel="PC1",ylabel="PC2", zlabel="PC3", title="Gender")
-    scatter!( 
-        ax4, 
-        dall.PC1, 
-        dall.PC2, 
-        dall.PC3;
-        markersize=3,
-        color=pol_col.( dall.Gender, ( GENDER_MAP,  ) ))
-    ax4 = Axis3(f[2,3],xlabel="PC1",ylabel="PC2", zlabel="PC3", title="Gender")
-    #f[2,4] = Legend(f,ax4,"Gender",framevisible=false)
+function one_pca( dall :: DataFrame, which :: Symbol, colours :: Dict )
+    f = Figure(fontsize=12, size = (1200, 900))
+    subplots = []
+    ax = Axis3(f[1,1],xlabel="PC1",ylabel="PC2", zlabel="PC3", title=pretty( string(which)))
+    for (k, colour) in colours
+        subset = dall[dall[!,which] .== k,[:PC1,:PC2,:PC3]]
+        sc = scatter!( 
+            ax, 
+            subset.PC1, 
+            subset.PC2, 
+            subset.PC3;
+            label=k,
+            markersize=5,
+            color=colour)
+        push!(subplots, sc)
+    end
+    Legend(f[1,2], ax )# subplots )
     f
 end
 
-
-function xxpca_graph( dall :: DataFrame )
-    ddf = AlgebraOfGraphics.data(dall)    
-    label1="PC1"
-    label2="PC2"
-    label3="PC3"
-    vote_label = "Voting Intention (January 2024)"
-    title="FF"
-    spec1 = ddf * 
-        mapping( 
-            :PC1=>label1, #:democracy_pre=>"Preference for Democratic Reform",
-            :PC2=>label2,
-            :PC3=>label3 ) * 
-        mapping(  color=:next_election=>vote_label) *
-        visual(Scatter)
-    return draw_pol_scat( spec1, title )
+function pca_graphs( dall :: DataFrame )
+    f1 = one_pca(dall,:last_election,POL_MAP)
+    f2 = one_pca(dall,:Owner_Occupier,BOOL_MAP)
+    f3 = one_pca(dall,:Gender, GENDER_MAP)
+    f4 = one_pca(dall,:ethnic_2, ETHNIC_MAP )
+    f1, f2, f3, f4
 end
 
+
+dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
+#
+# Cast weights to StatsBase weights type.
+#
+dall.weight = Weights(dall.weight)
+dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
 dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
 #
 # Cast weights to StatsBase weights type.
