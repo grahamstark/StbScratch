@@ -1527,3 +1527,7 @@ dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFram
 #
 dall.weight = Weights(dall.weight)
 dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
+# factor cols
+M, data, prediction = do_basic_pca(dall)
+dall = hcat( dall, prediction )
+
