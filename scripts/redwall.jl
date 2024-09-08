@@ -1,8 +1,10 @@
 #
 # This script generates regressions & charts from the ActNow dataset,
 #
-using AlgebraOfGraphics,
+using 
+    Makie,
     CairoMakie,
+    AlgebraOfGraphics,
     CategoricalArrays,
     ColorSchemes,
     CSV,
@@ -185,7 +187,10 @@ const SUMMARY_VARS = ["Age",
     "In_Control_Of_Life",
     "Life_Satisfaction",
     "gad_7",
-    "phq_8"
+    "phq_8",
+    "PC1",
+    "PC2",
+    "PC3"
     # "Change_in_circumstance"
     ]
 
@@ -1236,7 +1241,7 @@ end
 """
 Make a pile of summary statistics and histograms
 """
-function summarystats( dall :: DataFrame ) :: NamedTuple
+function make_summarystats( dall :: DataFrame ) :: NamedTuple
     n = 100
     # haters - scoring pre below 30; lovers scoring over 70 pre
     df = DataFrame( 
@@ -1274,6 +1279,7 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
     w = dall.probability_weight
     plots = Dict()
     hists = Dict()
+    algdata = AlgebraOfGraphics.data(dall)
     for p in POLICIES 
         i += 1
         ppre = Symbol("$(p)_pre")
@@ -1304,12 +1310,18 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
         avlove_post = 100*sum( lovers_pre[!,ppost] .* lovers_pre.probability_weight ) / nlovers_pre
         avhate_post = 100*sum( haters_pre[!,ppost] .* haters_pre.probability_weight ) / nhaters_pre
 
+        #=
+        println( "plotting $p")
+        hsp = AlgebraOfGraphics.plot( hs )
+        =# 
         hs = fit(Histogram, vpre, w )
-        hsp = plot( hs )
+        hsp = algdata * 
+            mapping(ppre,weights=:probability_weight) * 
+            AlgebraOfGraphics.density() |> AlgebraOfGraphics.draw
         plots[p] = hsp
         hists[p] = hs
         df.name[i] = lpretty(p)
-        df.mean_pre[i] = mean( vpre, w )
+        df.mean_pre[i] = StatsBase.mean( vpre, w )
         df.std[i] = std( vpre, w )
         df.median_pre[i] = median( vpre, w )
         df.mean_post[i] = mean( vpost, w )        
@@ -1366,7 +1378,7 @@ function summarystats( dall :: DataFrame ) :: NamedTuple
 end
 
 function make_and_print_summarystats( dall :: DataFrame )
-    d = summarystats( dall )
+    d = make_summarystats( dall )
     io = open( "tmp/summary_stats.html", "w")
     println( io, "<h3>Summary Statistics</h3>")
     t = pretty_table( 
@@ -1397,7 +1409,10 @@ function make_and_print_summarystats( dall :: DataFrame )
             "0 scores % (Before)",
             "100 scores % (Before)",
             "0 scores % (After)",
-            "100 scores % (After)"] ),
+            "100 scores % (After)",
+            "Principal Component #1 (PC1)",
+            "PC2",
+            "PC3"] ),
         table_class="table table-sm table-striped table-responsive", 
         backend = Val(:html))
     println( io, "<p><em>Note - p-values are for difference in pre-post mean scores - pairwise tests give smaller p- values.</em></p>")    
@@ -1514,20 +1529,48 @@ function pca_graphs( dall :: DataFrame )
     f1, f2, f3, f4
 end
 
+function crosstabs( dall )
+    cts = []
+    for col in [:last_election,:Owner_Occupier,:Gender, :ethnic_2]
+        # for fac in [:PC1,:PC2,:PC3]
+            ct = combine( groupby( dall, [col]),
+                (:PC1=>mean),
+                (:PC1=>std),
+                (:PC2=>(mean,std)),
+                (:PC3=>mean)) # changes in selected income var * hhweight * people count
+            push!( cts, ct )
+        # end
+    end
+    cts
+end
+#
+function make_pc_crosstabs( dall )
+    cts = []
+    for col in [:last_election,:Owner_Occupier,:Gender, :ethnic_2]
+        gd = groupby( dall, col )
+        ct = combine( gd,
+            nrow,
+            proprow,
+            (:PC1=>mean),
+            (:PC1=>std),
+            (:PC2=>mean),
+            (:PC2=>std),
+            (:PC3=>mean),
+            (:PC3=>std)) 
+        push!( cts, ct )
+    end
+    cts
+end
 
-dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
-#
-# Cast weights to StatsBase weights type.
-#
-dall.weight = Weights(dall.weight)
-dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
-dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
-#
-# Cast weights to StatsBase weights type.
-#
-dall.weight = Weights(dall.weight)
-dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
-# factor cols
-M, data, prediction = do_basic_pca(dall)
-dall = hcat( dall, prediction )
 
+function load_dall()::DataFrame
+    dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
+    #
+    # Cast weights to StatsBase weights type.
+    #
+    dall.weight = Weights(dall.weight)
+    dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
+    # factor cols
+    M, data, prediction = do_basic_pca(dall)
+    dall = hcat( dall, prediction )
+end
