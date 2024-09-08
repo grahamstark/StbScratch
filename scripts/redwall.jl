@@ -931,8 +931,8 @@ const BOOL_MAP = Dict(
 
 const GENDER_MAP = Dict(
     [
-        "Male" => :darkblue
-        "Female" => :darkpink
+        "Male" => :dodgerblue4
+        "Female" => :deeppink3
     ]
 )
 
