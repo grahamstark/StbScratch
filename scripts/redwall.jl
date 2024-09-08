@@ -1221,6 +1221,7 @@ function score_summarystats( dall :: DataFrame ) :: DataFrame
             for t in TREATMENT_TYPES
                 k = Symbol( "$(p)_treat_$(t)_score" ) # e.g. :basic_income_treat_absgains_score
                 subd = dallg[ .! ismissing.(dallg[!,k]),[k,:probability_weight]] # e.g. just those reporting a score for politics, absgains argument, and so on
+                subd.probability_weight = ProbabilityWeights( subd.probability_weight )
                 a = mean( subd[!,k], subd.probability_weight )
                 println( "$k = a=$a")
                 m = median( Float64.(subd[!,k]), subd.probability_weight )
@@ -1276,7 +1277,7 @@ function make_summarystats( dall :: DataFrame ) :: NamedTuple
         nzeros_post = zeros(n),
         nhundreds_post = zeros(n))
     i = 0
-    w = dall.probability_weight
+    w = ProbabilityWeights(dall.probability_weight)
     plots = Dict()
     hists = Dict()
     algdata = AlgebraOfGraphics.data(dall)
@@ -1315,14 +1316,16 @@ function make_summarystats( dall :: DataFrame ) :: NamedTuple
         hsp = AlgebraOfGraphics.plot( hs )
         =# 
         hs = fit(Histogram, vpre, w )
+        hsp = AlgebraOfGraphics.plot( hs )
         hsp = algdata * 
             mapping(ppre,weights=:probability_weight) * 
             AlgebraOfGraphics.density() |> AlgebraOfGraphics.draw
         plots[p] = hsp
         hists[p] = hs
         df.name[i] = lpretty(p)
-        df.mean_pre[i] = StatsBase.mean( vpre, w )
+        # @show w vpre
         df.std[i] = std( vpre, w )
+        df.mean_pre[i] = mean( vpre, w )
         df.median_pre[i] = median( vpre, w )
         df.mean_post[i] = mean( vpost, w )        
         df.median_post[i] = median( vpost, w )
