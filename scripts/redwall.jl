@@ -931,8 +931,8 @@ const BOOL_MAP = Dict(
 
 const GENDER_MAP = Dict(
     [
-        "Male" => :lightblue
-        "Female" => :pink
+        "Male" => :darkblue
+        "Female" => :darkpink
     ]
 )
 
@@ -1412,14 +1412,16 @@ function make_and_print_summarystats( dall :: DataFrame )
             "0 scores % (Before)",
             "100 scores % (Before)",
             "0 scores % (After)",
-            "100 scores % (After)",
-            "Principal Component #1 (PC1)",
-            "PC2",
-            "PC3"] ),
+            "100 scores % (After)"] ),
         table_class="table table-sm table-striped table-responsive", 
         backend = Val(:html))
     println( io, "<p><em>Note - p-values are for difference in pre-post mean scores - pairwise tests give smaller p- values.</em></p>")    
-    #
+    #=
+    ,
+    "Principal Component #1 (PC1)",
+    "PC2",
+    "PC3"
+    =#
     println( io, "<h3>Scores for Each Policy Argument</h3>")    
     t = pretty_table( 
         io,
@@ -1506,7 +1508,6 @@ end
 
 function one_pca( dall :: DataFrame, which :: Symbol, colours :: Dict )
     f = Figure(fontsize=12, size = (1200, 900))
-    subplots = []
     ax = Axis3(f[1,1],xlabel="PC1",ylabel="PC2", zlabel="PC3", title=pretty( string(which)))
     for (k, colour) in colours
         subset = dall[dall[!,which] .== k,[:PC1,:PC2,:PC3]]
@@ -1518,38 +1519,25 @@ function one_pca( dall :: DataFrame, which :: Symbol, colours :: Dict )
             label=k,
             markersize=5,
             color=colour)
-        push!(subplots, sc)
     end
-    Legend(f[1,2], ax )# subplots )
+    Legend(f[1,2], ax )
     f
 end
 
-function pca_graphs( dall :: DataFrame )
-    f1 = one_pca(dall,:last_election,POL_MAP)
-    f2 = one_pca(dall,:Owner_Occupier,BOOL_MAP)
-    f3 = one_pca(dall,:Gender, GENDER_MAP)
-    f4 = one_pca(dall,:ethnic_2, ETHNIC_MAP )
-    f1, f2, f3, f4
+function make_pca_graphs( dall :: DataFrame )
+    graphs = Dict()
+    graphs[:last_election] = one_pca(dall,:last_election,POL_MAP)
+    graphs[:Owner_Occupier] = one_pca(dall,:Owner_Occupier,BOOL_MAP)
+    graphs[:Gender] = one_pca(dall,:Gender, GENDER_MAP)
+    graphs[:ethnic_2] = one_pca(dall,:ethnic_2, ETHNIC_MAP )
+    graphs
 end
 
-function crosstabs( dall )
-    cts = []
-    for col in [:last_election,:Owner_Occupier,:Gender, :ethnic_2]
-        # for fac in [:PC1,:PC2,:PC3]
-            ct = combine( groupby( dall, [col]),
-                (:PC1=>mean),
-                (:PC1=>std),
-                (:PC2=>(mean,std)),
-                (:PC3=>mean)) # changes in selected income var * hhweight * people count
-            push!( cts, ct )
-        # end
-    end
-    cts
-end
+const PCA_BREAKDOWNS = [:last_election,:Owner_Occupier,:Gender, :ethnic_2]
 #
 function make_pc_crosstabs( dall )
-    cts = []
-    for col in [:last_election,:Owner_Occupier,:Gender, :ethnic_2]
+    cts = Dict()
+    for col in PCA_BREAKDOWNS
         gd = groupby( dall, col )
         ct = combine( gd,
             nrow,
@@ -1560,13 +1548,31 @@ function make_pc_crosstabs( dall )
             (:PC2=>std),
             (:PC3=>mean),
             (:PC3=>std)) 
-        push!( cts, ct )
+        cts[col] = ct
     end
     cts
 end
 
+function summarise_pca( dall :: DataFrame, M )
+    crosstabs = make_pc_crosstabs( dall )
+    graphs = make_pca_graphs( dall )
+    mdata = read("docs/pca-1.md", String)
+    open("docs/pca.md", "w") do io
+        println(io, mdata)
+        for col in PCA_BREAKDOWNS
+            s = pretty(string(col))
+            picname = "$(col)-pca"
+            save( "tmp/img/$(picname).svg", graphs[col])
+            save( "tmp/img/$(picname).png", graphs[col])
+            println( io, "## $s")
+            pretty_table(io, crosstabs[col], formatters=( form ))
+            println(io, "![Graph of Principal Components Of $s](img/$(picname).svg)")
+        end
+    end 
+end
 
-function load_dall()::DataFrame
+
+function load_dall()::Tuple
     dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
     #
     # Cast weights to StatsBase weights type.
@@ -1576,4 +1582,5 @@ function load_dall()::DataFrame
     # factor cols
     M, data, prediction = do_basic_pca(dall)
     dall = hcat( dall, prediction )
+    dall, M
 end
