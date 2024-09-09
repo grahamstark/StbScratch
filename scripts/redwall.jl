@@ -1493,20 +1493,42 @@ function make_and_print_summarystats( dall :: DataFrame )
     close( io )
 end
 
+
+function policies_as_matrix( dall :: DataFrame; normalise=true )::Matrix
+    # FIXME next 2 are dups
+    pol = Symbol.(string.(POLICIES) .* "_pre")
+    n = length(pol)
+    d = Matrix{Float64}( dall[!,pol] )'
+    # normalize
+    for i in 1:n
+        m = mean(d[i,:])
+        s = std(d[i,:])
+        if normalise 
+            d[i,:] = (d[i,:] .- m)/s
+            @assert isapprox(sum(d[i,:]), 0.0, atol=0.00001) "sum is $(sum(d[i,:]))"
+            @assert std(d[i,:]) ≈ 1.0  "std is $(std(d[i,:]))"
+        end
+    end
+    d 
+end
+
 """
 See: https://juliastats.org/MultivariateStats.jl/dev/pca/#Linear-Principal-Component-Analysis
 See: https://www.youtube.com/watch?v=FgakZw6K1QQ
 """
-function do_basic_pca( dall :: DataFrame )::Tuple
+function do_basic_pca( dall :: DataFrame; maxoutdim = 3 )::Tuple
+    #=
     pol = Symbol.(string.(POLICIES) .* "_pre")
     data = Matrix( dall[!,pol] )'
-    M = fit(PCA, data; maxoutdim=3)
+    =#
+    data =policies_as_matrix( dall )
+    M = fit(PCA, data; maxoutdim=maxoutdim)
     prediction = DataFrame( predict(M,data)',["PC1","PC2","PC3"])
     M, data,prediction
 end
 
 function one_pca( dall :: DataFrame, which :: Symbol, colours :: Dict )
-    f = Figure(fontsize=12, size = (1200, 900))
+    f = Figure(fontsize=12, size = (640, 640))
     ax = Axis3(f[1,1],xlabel="PC1",ylabel="PC2", zlabel="PC3", title=pretty( string(which)))
     for (k, colour) in colours
         subset = dall[dall[!,which] .== k,[:PC1,:PC2,:PC3]]
@@ -1532,6 +1554,37 @@ function make_pca_graphs( dall :: DataFrame )
     graphs
 end
 
+#=
+The Kaiser–Meyer–Olkin test.
+
+From the ever-reliable Wikipedia: https://en.wikipedia.org/wiki/Kaiser%E2%80%93Meyer%E2%80%93Olkin_test
+
+m : A matrix with the variables are in the rows and obs in the cols.
+=#
+function kmo_test( m :: AbstractMatrix )
+
+    function parcor( i::Int, j::Int, first::Int, last::Int )::AbstractFloat
+        # matrix indexes not = i or j
+        not_i_or_j = filter( k -> ! (k in [i,j]), first:last )
+        return partialcor( m[i,:], m[j,:], m[not_i_or_j,:]')
+    end
+
+    ps = 0.0
+    cs = 0.0
+    # The m[:,begin] bits are just sillyness for non 1-based arrays.
+    first = firstindex(m[:,begin])
+    last = lastindex( m[:,begin])
+    for i in eachindex(m[:,first])
+        for j in eachindex(m[:,first])
+            if i != j
+                ps += parcor( i, j, first, last )^2
+                cs += cor( m[i,:], m[j,:])^2
+            end
+        end
+    end
+    return cs / (ps+cs)
+end
+
 const PCA_BREAKDOWNS = [:last_election,:Owner_Occupier,:Gender, :ethnic_2]
 #
 function make_pc_crosstabs( dall )
@@ -1552,22 +1605,64 @@ function make_pc_crosstabs( dall )
     cts
 end
 
+function screeplot( xdata :: AbstractMatrix )  
+    M = fit(PCA, xdata; maxoutdim=10)
+    eigs = eigvals(M)
+    f = Figure(fontsize=12, size = (640, 480))
+    ax = Axis(f[1,1], xlabel="Factor",ylabel="Eigenvalue", title="Scree Plot")
+    lines!( ax, eigs )
+    f
+end
+
 function summarise_pca( dall :: DataFrame, M )
     crosstabs = make_pc_crosstabs( dall )
     graphs = make_pca_graphs( dall )
-    mdata = read("docs/pca-1.md", String)
-    open("docs/pca.md", "w") do io
-        println(io, mdata)
+    pca_text = read("docs/pca-1.md", String)
+    xdata = policies_as_matrix( dall )
+    kmo = fmt(kmo_test( xdata ))
+    scp = screeplot( xdata )
+    save( "tmp/img/scree-plot.svg", scp )
+    save( "tmp/img/scree-plot.png", scp )
+    loads = loadings(M)
+    # reverse the sign of the 1st set of loads to match
+    # what Julia prints - no idea whatsoever.
+    loads[:,1] .= loads[:,1] .* -1
+    pcf = DataFrame( names=pretty.(string.(POLICIES)),
+        PC1=loads[:,1],
+        PC2=loads[:,2],
+        PC3=loads[:,3])
+    open("tmp/pca.md", "w") do io
+        println( io, "# Act Now: Initial Principal Component Attempt")
+        println( io, "Kaiser–Meyer–Olkin (KMO) test: $kmo\n")
+        println(io, pca_text)
+        println(io, "![Scree Plot](img/scree-plot.png)")
+        println(io, "## Loadings\n");
+        pretty_table(io, pcf, formatters=( form ), 
+                backend = Val(:markdown))
         for col in PCA_BREAKDOWNS
             s = pretty(string(col))
             picname = "$(col)-pca"
             save( "tmp/img/$(picname).svg", graphs[col])
             save( "tmp/img/$(picname).png", graphs[col])
-            println( io, "## $s")
-            pretty_table(io, crosstabs[col], formatters=( form ))
-            println(io, "![Graph of Principal Components Of $s](img/$(picname).svg)")
-        end
-    end 
+            println( io, "## Principal Component Breadkdown: by $s\n")
+            pretty_table(io, 
+                crosstabs[col], 
+                formatters=( form ), 
+                backend = Val(:markdown),
+                header = [
+                    "",
+                    "N (unweighted)",
+                    "proportion",
+                    "1st Principal Component (PC): mean",
+                    "1st PC: std. dev",
+                    "2nd PC: mean",
+                    "2nd PC: std. dev",
+                    "3rd PC: mean",
+                    "3rd PC: std. dev"
+                ])
+            println(io, "\n ![Graph of Principal Components Of $s](img/$(picname).png)")
+        end # each breakdown 
+    end # file open
 end
 
 
