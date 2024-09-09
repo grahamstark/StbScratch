@@ -945,7 +945,6 @@ const ETHNIC_MAP = Dict(
 
 const POL_MAP = Dict([
     "Conservative" => :blue,
-    "Other" => :grey,
     "Labour" => :red,
     "Nat/Green" => :green,
     "LibDem" => :orange,
