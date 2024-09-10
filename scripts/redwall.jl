@@ -929,6 +929,13 @@ const BOOL_MAP = Dict(
     ]
 )
 
+const BOOL_MAP_2 = Dict(
+    [
+        true => :darkgreen,
+        false  => :red
+    ]
+)
+
 const GENDER_MAP = Dict(
     [
         "Male" => :dodgerblue4
@@ -1531,13 +1538,21 @@ function one_pca( dall :: DataFrame, which :: Symbol, colours :: Dict )
     f = Figure(fontsize=12, size = (640, 640))
     ax = Axis3(f[1,1],xlabel="PC1",ylabel="PC2", zlabel="PC3", title=pretty( string(which)))
     for (k, colour) in colours
+        # hack for Bools 
+        label = if k === false
+             "No"
+        elseif k === true
+            "Yes"
+        else 
+            pretty("$k")
+        end
         subset = dall[dall[!,which] .== k,[:PC1,:PC2,:PC3]]
         sc = scatter!( 
             ax, 
             subset.PC1, 
             subset.PC2, 
             subset.PC3;
-            label=k,
+            label=label,
             markersize=5,
             color=colour)
     end
@@ -1551,6 +1566,8 @@ function make_pca_graphs( dall :: DataFrame )
     graphs[:Owner_Occupier] = one_pca(dall,:Owner_Occupier,BOOL_MAP)
     graphs[:Gender] = one_pca(dall,:Gender, GENDER_MAP)
     graphs[:ethnic_2] = one_pca(dall,:ethnic_2, ETHNIC_MAP )
+    graphs[:destitute] = one_pca(dall,:destitute,BOOL_MAP_2)
+    graphs[:not_managing_financially] = one_pca(dall,:not_managing_financially,BOOL_MAP_2)
     graphs
 end
 
@@ -1585,7 +1602,7 @@ function kmo_test( m :: AbstractMatrix )
     return cs / (ps+cs)
 end
 
-const PCA_BREAKDOWNS = [:last_election,:Owner_Occupier,:Gender, :ethnic_2]
+const PCA_BREAKDOWNS = [:destitute, :not_managing_financially, :last_election,:Owner_Occupier,:Gender, :ethnic_2, ]
 #
 function make_pc_crosstabs( dall )
     cts = Dict()
@@ -1631,6 +1648,11 @@ function summarise_pca( dall :: DataFrame, M )
         PC1=loads[:,1],
         PC2=loads[:,2],
         PC3=loads[:,3])
+    destreg = lm( @formula( PC1 ~ At_Risk_of_Destitution), dall )
+    finreg = lm( @formula( PC1 ~ Satisfied_With_Income), dall )
+    regtable(destreg,finreg;file="tmp/regressions/pca-1.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable())
+    regstr = read("tmp/regressions/pca-1.html", String)
+
     open("tmp/pca.md", "w") do io
         println( io, "# Act Now: Initial Principal Component Attempt")
         println( io, "Kaiser–Meyer–Olkin (KMO) test: $kmo\n")
@@ -1662,6 +1684,7 @@ function summarise_pca( dall :: DataFrame, M )
                 ])
             println(io, "\n ![Graph of Principal Components Of $s](img/$(picname).png)")
         end # each breakdown 
+        println( io, regstr )
     end # file open
 end
 
