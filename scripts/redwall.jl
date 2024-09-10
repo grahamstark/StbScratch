@@ -956,7 +956,7 @@ const POL_MAP = Dict([
     "Nat/Green" => :green,
     "LibDem" => :orange,
     "No Vote/DK/Refused" => :lightgrey,
-    "Other/Brexit" => :darkgrey])
+    "Other/Brexit" => :purple])
 
 function pol_col( party :: AbstractString, map::Dict )::Symbol
     return get(map,string(party),:grey )
@@ -1655,7 +1655,7 @@ function summarise_pca( dall :: DataFrame, M )
 
     open("tmp/pca.md", "w") do io
         println( io, "# Act Now: Initial Principal Component Attempt")
-        println( io, "Kaiser–Meyer–Olkin (KMO) test: $kmo\n")
+        println( io, "Kaiser-Meyer-Olkin (KMO) test: $kmo\n")
         println(io, pca_text)
         println(io, "![Scree Plot](img/scree-plot.png)")
         println(io, "## Loadings\n");
@@ -1666,7 +1666,7 @@ function summarise_pca( dall :: DataFrame, M )
             picname = "$(col)-pca"
             save( "tmp/img/$(picname).svg", graphs[col])
             save( "tmp/img/$(picname).png", graphs[col])
-            println( io, "## Principal Component Breadkdown: by $s\n")
+            println( io, "\n\n## Principal Component Breakdown: by $s\n")
             pretty_table(io, 
                 crosstabs[col], 
                 formatters=( form ), 
