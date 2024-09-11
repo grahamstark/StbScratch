@@ -22,7 +22,7 @@ using
 using ScottishTaxBenefitModel
 using .Utils 
 
-include( "actnow-constants.jl")
+include( "actnow-common.jl")
 
 """
 Correlation matrix for the policies
@@ -226,7 +226,7 @@ function make_dataset()::DataFrame
     create_one!( dall; label="democracy", initialq="Q53.1_4", finalq="Q58.1_4", treatqs=["Q54.1_4","Q55.1_4","Q56.1_4","Q57.1_4"])
     create_one!( dall; label="tax", initialq="Q59.1_4", finalq="Q64.1_4", treatqs=["Q60.1_4","Q61.1_4","Q62.1_4","Q63.1_4"])
 
-    rename!( dall, RENAMES )
+    rename!( dall, RENAMES_V4 )
     # dall = dall[dall.HH_Net_income_PA .> 0,:] # skip zeto incomes 
     dall = dall[(.! ismissing.(dall.HH_Net_Income_PA )) .& (dall.HH_Net_Income_PA .> 0),:]
     n = size(dall)[1]
@@ -1350,7 +1350,7 @@ function summarise_pca( dall :: DataFrame, M )
 end
 
 
-function load_dall()::Tuple
+function load_dall_v4()::Tuple
     dall = CSV.File( joinpath( DATA_DIR, "national-w-created-vars.tab")) |> DataFrame 
     #
     # Cast weights to StatsBase weights type.

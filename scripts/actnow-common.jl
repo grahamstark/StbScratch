@@ -1,5 +1,5 @@
 #
-#
+# Common constants and formatting code for ActNow 
 # 
 
 DATA_DIR="/mnt/data/ActNow/Surveys/live/"
@@ -37,7 +37,7 @@ const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 
 const POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
 
-const RENAMES = Dict(
+const RENAMES_V4 = Dict(
     "Q65.2_1"=>"Support_All_Policies",
     "Q65.3_1"=>"Any_Argument",
     "Q66.2"=>"Age",
@@ -91,7 +91,7 @@ const RENAMES = Dict(
     "Q66.24_5"=>"Politicians_Want_To_Make_Things_Better",
     "Q66.24_6"=>"Shouldnt_Rely_On_Government" )
 
-const RENAMES_REV = Dict( values(RENAMES) .=> keys(RENAMES))
+const RENAMES_V4_REV = Dict( values(RENAMES_V4) .=> keys(RENAMES_V4))
 
 #= 
 # renaming was dumb
@@ -120,7 +120,7 @@ const GAD_7 = [
 
 function lpretty( s :: AbstractString ) :: String
     o = pretty( s )
-    v = get(RENAMES_REV,s,"")
+    v = get(RENAMES_V4_REV,s,"")
     if v == ""
         return o
     end
