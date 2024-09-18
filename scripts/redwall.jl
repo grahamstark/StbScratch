@@ -1,27 +1,6 @@
 #
 # This script generates regressions & charts from the ActNow dataset,
 #
-using 
-    Makie,
-    CairoMakie,
-    AlgebraOfGraphics,
-    CategoricalArrays,
-    ColorSchemes,
-    CSV,
-    DataFrames,
-    Format,
-    GLM,
-    HypothesisTests,
-    MultivariateStats,
-    PrettyTables,
-    RegressionTables,
-    StatsBase,
-    SurveyDataWeighting,
-    Tidier
-
-using ScottishTaxBenefitModel
-using .Utils 
-
 include( "actnow-common.jl")
 
 """

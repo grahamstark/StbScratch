@@ -1,8 +1,33 @@
 #
 # Common constants and formatting code for ActNow 
 # 
+# FIXME check which graphics are actually used here
+using 
+    Makie,
+    CairoMakie,
+    AlgebraOfGraphics,
+    CategoricalArrays,
+    ColorSchemes,
+    CSV,
+    DataFrames,
+    Format,
+    GLM,
+    HypothesisTests,
+    MultivariateStats,
+    MixedModels,
+    PrettyTables,
+    RegressionTables,
+    StatsBase,
+    SurveyDataWeighting,
+    Tidier
 
-DATA_DIR="/mnt/data/ActNow/Surveys/live/"
+using ScottishTaxBenefitModel
+using .Utils 
+    
+
+# const DATA_DIR="/mnt/data/ActNow/Surveys/live/"
+# FIXME TEMP!!!
+const DATA_DIR="/home/graham_s/julia/vw/StbScratch/data/"
 
 # FIXME use this consistently
 const TREATMENT_TYPESDICT = Dict([
@@ -93,6 +118,46 @@ const RENAMES_V4 = Dict(
 
 const RENAMES_V4_REV = Dict( values(RENAMES_V4) .=> keys(RENAMES_V4))
 
+#=
+Depression PHQ-8 total score	Q9.1_1 through Q9.1_8	Q9.1_1 through Q9.1_8
+Anxiety GAD-7 total score	Q25_1 through Q25_7	Q66.15_1 through Q66.15_7
+Risk of destitution 0-100 extremely low risk to extremely high risk	Q30_1	Q66.9_1
+Control of life 0-100 completely out of control to completely in control	Q29_1	Q66.17_1
+Age	Q51	Q66_2
+Satisfaction with income  1 = 'Completely Dissatisfied' to 7 = 'Completely Satisfied'	Q34	Q66.11
+Managing financially 1-5 scale (comfortable to struggling)	Q33	Q66_10
+MacArthur Scale of Subjective Social Status 1-10 family worst off to best off	Q37 ('where you think you stand at this time in your life relative to other people in the United Kingdom')	Q66.12 (family in British society)
+Faith/cynicism in government (some statements go from cynicism to faith and some faith to cynicism so need to be standardised)	Q40_1 through Q40_6	Q66.24_1 through Q66.24_6
+Party voting intention at the next election	Q56	Q66.23
+
+=#
+const RENAMES_V3 = Dict([
+    "Q9.1_1"=>"Little_interest_in_things",
+    "Q9.1_2"=>"Depressed",
+    "Q9.1_3"=>"Trouble_Sleeping",
+    "Q9.1_4"=>"No_Energy",
+    "Q9.1_5"=>"Poor_Appetite",
+    "Q9.1_6"=>"Feeling_Failure",
+    "Q9.1_7"=>"Trouble_Concentrating",
+    "Q9.1_8"=>"More_Restless_Than_Usual",
+    "Q25_1"=>"Anxious",
+    "Q25_2"=>"Uncontrolled_Worry",
+    "Q25_3"=>"Worrying_To_Much",
+    "Q25_4"=>"Trouble_Relaxing",
+    "Q25_5"=>"Restless_Cant_Sit_Still",
+    "Q25_6"=>"Easily_Annoyed",
+    "Q25_7"=>"Afraid",
+    "Q30_1"=>"At_Risk_of_Destitution",
+    "Q29_1"=>"In_Control_Of_Life",
+    "Q51"=>"Age",
+    "Q52"=>"Gender",
+    "Q52_3_TEXT"=>"Gender_Other",
+    "Q33"=>"Managing_Financially",
+    "Q34"=>"Satisfied_With_Income",
+    "Q37"=>"Ladder",
+    "Q19"=>"General_Health"])
+
+const RENAMES_V3_REV = Dict( values(RENAMES_V3) .=> keys(RENAMES_V3))
 #= 
 # renaming was dumb
 # sum over these for GAD-7 Generalized Anxiety Disorder 7",
