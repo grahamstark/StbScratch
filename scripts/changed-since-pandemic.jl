@@ -4,12 +4,21 @@
 include("actnow-common.jl")
 
 function load_dall_v3()
-    dall = CSV.File( 
+    dall3 = CSV.File( 
         joinpath( DATA_DIR, "Study-3-Full-Data.tab"),
         delim='\t',
         comment="#") |> DataFrame 
-    rename!( dall, RENAMES+V3 )
     dropmissing!(dall3,:PROLIFIC_PID)
+
+    dall3_2 = CSV.File( 
+        joinpath( DATA_DIR, "survey3", "study.3.data.csv"),
+        delim=',',
+        comment="#") |> DataFrame 
+    dropmissing!(dall3_2,:PROLIFIC_PID)
+
+    dd2 = innerjoin( dall3, dall3_2, on=:PROLIFIC_PID, makeunique=true )
+    rename!( dd2, RENAMES_V3 )
+
     #
     # Cast weights to StatsBase weights type.
     #
@@ -21,6 +30,7 @@ function load_dall_v3()
     dall = hcat( dall, prediction )
     dall, M
     =#
+    dd2
 end
 
 
