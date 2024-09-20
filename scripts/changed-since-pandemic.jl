@@ -186,9 +186,22 @@ function analyse( joined :: DataFrame )
     return anal, counts
 end
 
-function do_mixed_regressons( stacked :: DataFrame )
-    f = @formula(basic_income_post ~ 1 + HH_Net_Income_PA +  At_Risk_of_Destitution + gad_7 + phq_8 + Ladder + 
+function do_mixed_regressons( stacked :: DataFrame ) :: Tuple
+    f1 = @formula(basic_income_post ~ 1 + HH_Net_Income_PA +  At_Risk_of_Destitution + gad_7 + phq_8 + Ladder + 
     (1 + HH_Net_Income_PA + At_Risk_of_Destitution + gad_7 + phq_8 + Ladder | PROLIFIC_PID ))
-    fm3 = fit(MixedModel, f, stacked)
-    fm3
+    fm1 = fit(MixedModel, f1, stacked)
+    
+    f2 = @formula(basic_income_post ~ 1 + HH_Net_Income_PA +  At_Risk_of_Destitution + gad_7 + phq_8 + Ladder + Age + Gender +
+    (1 + HH_Net_Income_PA + At_Risk_of_Destitution + gad_7 + phq_8 + Ladder + Age + Gender | PROLIFIC_PID ))
+    fm2 = fit(MixedModel, f2, stacked)
+
+    f3 = @formula(basic_income_post ~ 1 + HH_Net_Income_PA +  At_Risk_of_Destitution + gad_7 + phq_8 + Ladder + Age + Gender + next_election +
+    (1 + HH_Net_Income_PA + At_Risk_of_Destitution + gad_7 + phq_8 + Ladder + Age + Gender + next_election | PROLIFIC_PID ))
+    fm3 = fit(MixedModel, f3, stacked)
+
+    f4 = @formula(basic_income_post ~ 1 + Ladder + Age + Gender+ next_election +
+    (1 + Ladder + Age + Gender + next_election | PROLIFIC_PID ))
+    fm4 = fit(MixedModel, f4, stacked)
+
+    fm1, fm2, fm3, fm4
 end
