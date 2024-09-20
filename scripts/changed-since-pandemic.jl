@@ -178,10 +178,10 @@ function analyse( joined :: DataFrame )
         anal[c] = (; fig_gender, fig_pol, s_w3, s_w4, corr )         
     end
     
-    counts = (; gender=countmap(joined.Gender_1), pol_w3=countmap(joined.next_election), 
-        pol_w4=countmap(joined.next_election_1),
-        love_w3=countmap(joined.lovers_post), hate_w3=countmap(joined.haters_post),
-        love_w4=countmap(joined.lovers_post_1), hate_w4=countmap(joined.haters_post_1))
+    counts = (; gender=countmap(joined.Gender_1), vote_intention_2022=countmap(joined.next_election), 
+        vote_intention_2024=countmap(joined.next_election_1),
+        bi_lovers_v3=countmap(joined.lovers_post), bi_haters_v3=countmap(joined.haters_post),
+        bi_lovers_v4=countmap(joined.lovers_post_1), bi_haters_v4=countmap(joined.haters_post_1))
 
     return anal, counts
 end
@@ -204,4 +204,42 @@ function do_mixed_regressons( stacked :: DataFrame ) :: Tuple
     fm4 = fit(MixedModel, f4, stacked)
 
     fm1, fm2, fm3, fm4
+end
+
+function make_md_page( stats::Dict, counts :: NamedTuple )
+    io = open( "tmp/v3-v4-insert.md", "w")
+    println(io, "| | Correlation W3->W4 | mean W3| Mean W4 | Median W3 | Median W4 | SD W3 | SD W4 | N | | |")
+    println(io, "| ------------ "^11, "|")
+    for c in CORR_TARGETS
+        pc = pretty( c )
+        e = stats[c]
+        save( "tmp/img/fig-gender-$(c).svg", e.fig_gender )
+        save( "tmp/img/fig-pol-$(c).svg", e.fig_pol)
+        print( io, "| $pc ")
+        print( io, "| $(f2(e.corr))")
+        print( io, "| $(f2(e.s_w3.mean))")
+        print( io, "| $(f2(e.s_w4.mean))")
+        print( io, "| $(f2(e.s_w3.median))")
+        print( io, "| $(f2(e.s_w4.median))")
+        print( io, "| $(f2(e.s_w3.sd ))")
+        print( io, "| $(f2(e.s_w4.sd ))")
+        print( io, "| ![image of $c by gender](img/fig-gender-$(c).svg) ")
+        print( io, "| ![image of $c by pol](img/fig-pol-$(c).svg) ")
+        println( io, "| $(e.s_w4.nobs ) |")
+        # fig_gender, fig_pol, s_w3, s_w4, corr
+    end
+    println( io, "\n\n## SOME COUNTS\n")
+    for c in [:gender, :vote_intention_2022, :vote_intention_2024, :bi_lovers_v3, :bi_lovers_v4, :bi_haters_v3, :bi_haters_v4]
+        m = counts[c]
+        title = pretty( string(c))
+        println( io, "### $title\n\n")
+        println( io, "| | N | ")
+        println( io, "| ------ | ------- |")
+        for k in sort( collect(keys(m) ))
+            println( io,  "| $k | $(m[k]) |")
+        end
+        println( io, "\n\n")
+    end
+    println( io, "\n\n" )
+    close( io )
 end

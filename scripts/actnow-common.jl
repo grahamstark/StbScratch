@@ -271,6 +271,7 @@ form( v :: Missing, i, j ) = ""
 form( v :: AbstractString, i, j ) = v
 form( v :: Integer, i, j ) = "$v"
 form( v :: Number, i, j ) = Format.format(v; precision=2, commas=true )
+f2( v :: Number )= Format.format(v; precision=2, commas=true )
 
 """
 Hacky p-values cols in stats tables.
