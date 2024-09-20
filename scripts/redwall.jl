@@ -108,25 +108,6 @@ function recode_income( inc )
   end
 end
 
-const DEPLEVELS = [
-    "Not at all",
-    "Several days",
-    "More than half the days",
-    "Nearly every day" ]
-
-function health_score( p :: DataFrameRow, keys... )::Int
-
-    function map_one( s :: AbstractString )::Int
-        findfirst(x->x==s,DEPLEVELS) - 1 
-    end
-
-    i = 0
-    for k in keys
-        i += map_one( p[k])
-    end
-    return i
-end
-
 #
 # convoluted stuff to get RegressionTables to print p- values under the coefficients, since
 # that isn't one of the defaults.
@@ -144,42 +125,6 @@ end
 
 
 function make_dataset()::DataFrame
-
-    function recode_ethnic( ethnic :: AbstractString ) :: String
-        return ethnic == "1. English, Welsh, Scottish, Northern Irish or British" ? "Ethnic British" : "Other Ethnic" 
-    end
-
-    """
-    FIXME mess
-    """
-    function recode_party( party :: AbstractString; condensed :: Bool ) :: String
-        d = if party in ["Conservative Party"]
-            ("Conservative", "Conservative")
-        elseif party in ["Green Party", "Plaid Cymru", "Scottish National Party"]
-            ("Nat/Green","Other")
-        elseif party in ["Labour Party"]
-            ("Labour","Labour")
-        elseif party in ["Liberal Democrats"]
-            ("LibDem","Other")
-        elseif party in ["Other (please name below)", "Independent candidate","Brexit Party"]
-            ("Other/Brexit","Other")
-        else 
-            ("No Vote/DK/Refused","Other")
-        end
-        return condensed ? d[2] : d[1]
-    end
-
-    function recode_employment( employment :: AbstractString ) :: String
-        return if employment in [
-            "In full-time paid work (30 or more hours a week)"
-            "In irregular or occasional work"
-            "Self-employed"
-            "In part-time paid work (less than 30 hours a week)"]
-            "Working/SE Inc. Part-Time"
-        else
-            "Not Working, Inc. Retired/Caring/Student"
-        end
-    end
 
     dn = CSV.File("$(DATA_DIR)/national_censored.csv")|>DataFrame
     dr = CSV.File("$(DATA_DIR)/red_censored.csv")|>DataFrame

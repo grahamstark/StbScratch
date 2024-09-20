@@ -155,7 +155,15 @@ const RENAMES_V3 = Dict([
     "Q33"=>"Managing_Financially",
     "Q34"=>"Satisfied_With_Income",
     "Q37"=>"Ladder",
-    "Q19"=>"General_Health"])
+    "Q19"=>"General_Health",
+    "Q56"=>"Party_Next_Election",
+    "Q56_7_TEXT"=>"Party_Next_Election_Other",
+    "Q40_1"=>"Politicians_All_The_Same",
+    "Q40_2"=>"Politics_Force_For_Good’",
+    "Q40_3"=>"Party_In_Government_Doesnt_Matter",
+    "Q40_4"=>"Politicians_Dont_Care",
+    "Q40_5"=>"Politicians_Want_To_Make_Things_Better",
+    "Q40_6"=>"Shouldnt_Rely_On_Government" ])
 
 const RENAMES_V3_REV = Dict( values(RENAMES_V3) .=> keys(RENAMES_V3))
 #= 
@@ -240,6 +248,12 @@ const SUMMARY_VARS = ["Age",
     ]
 
 
+const DEPLEVELS = [
+    "Not at all",
+    "Several days",
+    "More than half the days",
+    "Nearly every day" ]
+    
 #=
 Q66.6 # HH_Net_Income_PA
 Q66.8 # Owner_Occupier
@@ -410,3 +424,103 @@ function pol_col( party :: AbstractString, map::Dict )::Symbol
 end
 
 
+function health_score( p :: DataFrameRow, keys... )::Union{Int,Missing}
+
+    function map_one( s :: AbstractString )::Int
+        findfirst(x->x==s,DEPLEVELS) - 1 
+    end
+
+    i = 0
+    for k in keys
+        if ismissing(p[k])
+            return missing
+        end
+        i += map_one( p[k])
+    end
+    return i
+end
+
+
+#=
+https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/consumerpriceindices
+
+CPI INDEX 00: ALL ITEMS 2015=100
+D7BT
+
+Index, base year = 100
+18-09-2024
+16 October 2024
+=#
+
+const CPI_FEB_2022 = 115.8
+const CPI_JAN_2024 = 131.5
+const CPI_DELTA_FEB_22_JAN_24 = CPI_JAN_2024/CPI_FEB_2022
+
+#=
+function recode_party( party :: AbstractString ) :: String
+    return if party in ["Conservative Party"]
+        "Conservative"
+    elseif party in ["Green Party", "Plaid Cymru", "Scottish National Party"]
+        "Nat/Green"
+    elseif party in ["Labour Party"]
+        "Labour"
+    elseif party in ["Liberal Democrats"]
+        "LibDem"
+    elseif party in ["Other (please name below)", "Independent candidate","Brexit Party"]
+        "Other/Brexit"
+    else 
+        "No Vote/DK/Refused"
+    end
+end
+
+function recode_employment( employment :: AbstractString ) :: String
+    return if employment in [
+        "In full-time paid work (30 or more hours a week)"
+        "In irregular or occasional work"
+        "Self-employed"
+        "In part-time paid work (less than 30 hours a week)"]
+        "Working/SE Inc. Part-Time"
+    else
+        "Not Working, Inc. Retired/Caring/Student"
+    end
+end
+
+=#
+
+"""
+FIXME mess
+"""
+function recode_party( party :: Union{AbstractString,Missing}; condensed :: Bool ) :: String
+    d = if ismissing( party )
+        ("No Vote/DK/Refused","Other")
+    elseif party in ["Conservative Party"]
+        ("Conservative", "Conservative")
+    elseif party in ["Green Party", "Plaid Cymru", "Scottish National Party"]
+        ("Nat/Green","Other")
+    elseif party in ["Labour Party"]
+        ("Labour","Labour")
+    elseif party in ["Liberal Democrats"]
+        ("LibDem","Other")
+    elseif party in ["Other (please name below)", "Independent candidate","Brexit Party"]
+        ("Other/Brexit","Other")
+    else 
+        ("No Vote/DK/Refused","Other")
+    end
+    return condensed ? d[2] : d[1]
+end
+
+function recode_employment( employment :: AbstractString ) :: String
+    return if employment in [
+        "In full-time paid work (30 or more hours a week)"
+        "In irregular or occasional work"
+        "Self-employed"
+        "In part-time paid work (less than 30 hours a week)"]
+        "Working/SE Inc. Part-Time"
+    else
+        "Not Working, Inc. Retired/Caring/Student"
+    end
+end
+
+function recode_ethnic( ethnic :: AbstractString ) :: String
+    return ethnic == "1. English, Welsh, Scottish, Northern Irish or British" ? "Ethnic British" : "Other Ethnic" 
+end

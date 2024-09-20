@@ -18,7 +18,8 @@ function create_income( r :: DataFrameRow ) :: Union{Real,Missing}
     else
         @assert false "unknown $(r.Q14)"
     end
-    i * m
+    # uprated from FEB 2022 to Jan 2024 for comparability with V4 survey
+    i * m * CPI_DELTA_FEB_22_JAN_24
 end
 
 function incomes_in_range( r :: DataFrameRow )
@@ -40,6 +41,7 @@ function load_dall_v3()
         joinpath( DATA_DIR, "Study-3-Full-Data.tab"),
         delim='\t',
         comment="#") |> DataFrame 
+    dall3 = dall3[dall3.Finished,:]
     dropmissing!(dall3,:PROLIFIC_PID)
     # TODO: income, two aggregate health scores
     # 
@@ -52,6 +54,7 @@ function load_dall_v3()
         delim=',',
         comment="#") |> DataFrame 
     dropmissing!(dall3_2,:PROLIFIC_PID)
+
     dd2 = innerjoin( dall3, dall3_2, on=:PROLIFIC_PID, makeunique=true )
     # idiot check on the merge 
     @assert dd2[dd2.Finished,:StartDate] == dd2[dd2.Finished,:StartDate_1]
@@ -61,37 +64,37 @@ function load_dall_v3()
         dd2.Support_efficiency, 
         dd2.Support_flourishing, 
         dd2.Support_security )
+    dropmissing!( dd2, :basic_income_post )    
     dd2.HH_Net_Income_PA = create_income.( eachrow( dd2 ))
-    
-    #
-    # Cast weights to StatsBase weights type.
-    #
-    #=
-    dall.weight = Weights(dall.weight)
-    dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
-    # factor cols
-    M, data, prediction = do_basic_pca(dall)
-    dall = hcat( dall, prediction )
-    dall, M
-    =#
+    dd2.gad_7 = health_score.(eachrow(dd2), GAD_7...)
+    dd2.phq_8 = health_score.(eachrow(dd2), PHQ_8...)
+    dd2.sqrt_gad_7 = sqrt.(dd2.gad_7)
+    dd2.sqrt_phq_8 = sqrt.(dd2.phq_8)
+    dd2.next_election =  recode_party.( dd2.Party_Next_Election, condensed=false )
+    dd2.next_election_condensed .= recode_party.( dd2.Party_Next_Election, condensed=true )
+    dd2.haters_post = dd2.basic_income_post .< 30 
+    dd2.lovers_post = dd2.basic_income_post .> 70
     return dd2
 end
 
-
 function joinv3v4( dall3::DataFrame, dall4::DataFrame)::Tuple
+    # tmp hate vars in 4 data
+    dall4.haters_post = dall4.basic_income_post .< 30 
+    dall4.lovers_post = dall4.basic_income_post .> 70
+
     dc3 = deepcopy(dall3)
     dc4 = deepcopy(dall4)
     dc3 = dc3[dc3.Finished,:] # 24 examples of not finished
     dc4 = dc4[dc4.Finished,:] # no examples of not finished
     dropmissing!(dc3,:PROLIFIC_PID)
     dropmissing!(dc4,:PROLIFIC_PID)
-    bothp_joined = innerjoin(
+    joined = innerjoin(
         dc3, dc4;
         on = :PROLIFIC_PID,
         matchmissing = :notequal,
         makeunique = true )
-    bothp_joined = filter( incomes_in_range, bothp_joined )
-    threepids = copy(bothp_joined.PROLIFIC_PID)
+    joined = filter( incomes_in_range, joined )
+    threepids = copy(joined.PROLIFIC_PID)
     dc3 = dc3[ in.(dc3.PROLIFIC_PID, ( threepids, )), : ]
     dc4 = dc4[ in.(dc4.PROLIFIC_PID, ( threepids, )), : ]
     #=
@@ -99,51 +102,93 @@ function joinv3v4( dall3::DataFrame, dall4::DataFrame)::Tuple
     dc3 = dc3[ in.(dc3.PROLIFIC_PID, ( dc4.PROLIFIC_PID, )), : ]
     dc4 = dc4[ in.(dc4.PROLIFIC_PID, ( threepids, )), : ]
     =#
-    bothp_stacked = vcat( dc3, dc4, cols=:intersect )
-    sort!( bothp_stacked, [:PROLIFIC_PID,:EndDate])
-    @assert size(bothp_joined)[1]*2 == size(bothp_stacked)[1] "n joined= $(size(bothp_joined)[1]*2); n stacked= $(size(bothp_stacked)[1])"
-    bothp_joined, bothp_stacked
+    stacked = vcat( dc3, dc4, cols=:intersect )
+    sort!( stacked, [:PROLIFIC_PID,:EndDate])
+    @assert size(joined)[1]*2 == size(stacked)[1] "n joined= $(size(joined)[1]*2); n stacked= $(size(stacked)[1])"
+    joined, stacked
 end
 
 const CORR_TARGETS = [
-    :General_Health, :General_Health_1, 
-    :Little_interest_in_things, :Little_interest_in_things_1, 
-    :Depressed, :Depressed_1, 
-    :Trouble_Sleeping, :Trouble_Sleeping_1, 
-    :No_Energy, :No_Energy_1, 
-    :Poor_Appetite, :Poor_Appetite_1, 
-    :Feeling_Failure, :Feeling_Failure_1, 
-    :Trouble_Concentrating, :Trouble_Concentrating_1, 
-    :More_Restless_Than_Usual, :More_Restless_Than_Usual_1, 
-    :Anxious, :Anxious_1, 
-    :Uncontrolled_Worry, :Uncontrolled_Worry_1, 
-    :Worrying_To_Much, :Worrying_To_Much_1, 
-    :Trouble_Relaxing, :Trouble_Relaxing_1, 
-    :Restless_Cant_Sit_Still, :Restless_Cant_Sit_Still_1, 
-    :Easily_Annoyed, :Easily_Annoyed_1, 
-    :Afraid, :Afraid_1, 
-    :In_Control_Of_Life, :In_Control_Of_Life_1, 
-    :At_Risk_of_Destitution, :At_Risk_of_Destitution_1, 
-    :Managing_Financially, :Managing_Financially_1, 
-    :Satisfied_With_Income, :Satisfied_With_Income_1, 
-    :Ladder, :Ladder_1, 
-    :Age, :Age_1, 
-    :Gender, :Gender_1, 
-    :Gender_Other, :Gender_Other_1, 
-    :basic_income_post, :basic_income_post_1]
+    "basic_income_post",
+    "In_Control_Of_Life",
+    "gad_7",
+    "phq_8",
+    "Ladder", 
+    "HH_Net_Income_PA",
+    "Age" ] 
 
+  
 
-function analyse( bothp_joined :: DataFrame )
+function pre_post_scatter( 
+    joined :: DataFrame,
+    var :: String, 
+    by  :: String,
+    colours :: Dict )
     f = Figure()
-    ax = Axis(f[1,1],title="Nominal Income Change", xlabel="Income Wave 3",ylabel="Income Wave 4")
-    scatter!( ax, bothp_joined.HH_Net_Income_PA, bothp_joined.HH_Net_Income_PA_1; color=bothp_joined.not_managing_financially )
-    # FIXME legend 
-    p1 = scatter( 
-        bothp_joined.basic_income_post, 
-        bothp_joined.basic_income_post_1; 
-        color=bothp_joined.not_managing_financially )
-    s3 = summarystats( bothp_joined.basic_income_post )
-    s4 = summarystats( bothp_joined.basic_income_post_1 )
-    correlations
-    f, s3, s4
+    vname = pretty( var )
+    vby = pretty( by )
+    presym = Symbol( var )
+    postsym = Symbol( var* "_1")
+    bysym = Symbol( by )
+    title = vname 
+    subtitle = "Change between Surveys 3 and 4 by $vby"
+    ax = Axis(f[1,1],title=title, subtitle=subtitle,
+        xlabel="$vname Survey 3",
+        ylabel="$vname Survey 4" )
+    # FIXME legend
+    for (k, colour) in colours
+        # hack for Bools 
+        label = if k === false
+             "No"
+        elseif k === true
+            "Yes"
+        else 
+            pretty("$k")
+        end
+        subset = joined[joined[!,bysym] .== k,:] 
+        sc = scatter!( 
+            ax,
+            subset[!,presym], 
+            subset[!,postsym]; 
+            color=colour,
+            label = pretty(k) )#  joined[!,bysym] )
+    end
+    Legend(f[1,2], ax )
+    return f
+end
+
+function analyse( joined :: DataFrame )
+    anal = Dict()
+    for c in CORR_TARGETS
+        presym = Symbol(c)
+        postsym = Symbol( "$(c)_1")
+        fig_gender = pre_post_scatter( 
+            joined, 
+            c, 
+            "Gender",
+            GENDER_MAP )
+        fig_pol = pre_post_scatter( 
+            joined, 
+            c, 
+            "next_election",
+            POL_MAP )
+        s_w3 = summarystats( joined[!,presym] )
+        s_w4 = summarystats( joined[!,postsym] )
+        corr = cor( joined[ !, presym], joined[ !, postsym] )
+        anal[c] = (; fig_gender, fig_pol, s_w3, s_w4, corr )         
+    end
+    
+    counts = (; gender=countmap(joined.Gender_1), pol_w3=countmap(joined.next_election), 
+        pol_w4=countmap(joined.next_election_1),
+        love_w3=countmap(joined.lovers_post), hate_w3=countmap(joined.haters_post),
+        love_w4=countmap(joined.lovers_post_1), hate_w4=countmap(joined.haters_post_1))
+
+    return anal, counts
+end
+
+function do_mixed_regressons( stacked :: DataFrame )
+    f = @formula(basic_income_post ~ 1 + HH_Net_Income_PA +  At_Risk_of_Destitution + gad_7 + phq_8 + Ladder + 
+    (1 + HH_Net_Income_PA + At_Risk_of_Destitution + gad_7 + phq_8 + Ladder | PROLIFIC_PID ))
+    fm3 = fit(MixedModel, f, stacked)
+    fm3
 end
