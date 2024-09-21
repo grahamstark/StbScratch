@@ -398,8 +398,9 @@ const BOOL_MAP_2 = Dict(
 
 const GENDER_MAP = Dict(
     [
-        "Male" => :dodgerblue4
-        "Female" => :deeppink3
+        "Male" => :dodgerblue4,
+        "Female" => :deeppink3,
+        "Other" => :grey
     ]
 )
 
@@ -510,6 +511,19 @@ function recode_party( party :: Union{AbstractString,Missing}; condensed :: Bool
     return condensed ? d[2] : d[1]
 end
 
+#=
+"An independent candidate"
+ "Brexit Party"
+ "Conservative Party"
+ "Green Party"
+ "I will choose not to vote at the next General Election"
+ "I will not be eligible to vote " ⋯ 19 bytes ⋯ " Election (i.e. residency etc.)"
+ "Labour Party"
+ "Liberal Democrats"
+ "Other (please name below)"
+ "Prefer not to say"
+=#
+
 function recode_employment( employment :: AbstractString ) :: String
     return if employment in [
         "In full-time paid work (30 or more hours a week)"
@@ -524,4 +538,9 @@ end
 
 function recode_ethnic( ethnic :: AbstractString ) :: String
     return ethnic == "1. English, Welsh, Scottish, Northern Irish or British" ? "Ethnic British" : "Other Ethnic" 
+end
+
+function recode_gender( gender :: AbstractString )::String 
+    # println("recode gender $gender")
+    return gender in ["Male","Female"] ? gender : "Other"
 end

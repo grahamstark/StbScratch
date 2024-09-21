@@ -166,6 +166,8 @@ function make_dataset()::DataFrame
     dall.log_income = log.(dall.HH_Net_Income_PA)
     dall.age_sq = dall.Age .^2
     dall.Gender= convert.(String,dall.Gender)
+    dall.Gender = recode_gender.( dall.Gender )
+
     dall.Owner_Occupier= convert.(String,dall.Owner_Occupier)
     dall.General_Health= convert.(String,dall.General_Health)
 

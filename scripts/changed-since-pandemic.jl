@@ -74,8 +74,19 @@ function load_dall_v3()
     dd2.next_election_condensed .= recode_party.( dd2.Party_Next_Election, condensed=true )
     dd2.haters_post = dd2.basic_income_post .< 30 
     dd2.lovers_post = dd2.basic_income_post .> 70
+    dd2.Gender = recode_gender.( dd2.Gender )
     return dd2
 end
+
+const CORR_TARGETS = [
+    "basic_income_post",
+    "At_Risk_of_Destitution",
+    "In_Control_Of_Life",
+    "gad_7",
+    "phq_8",
+    "Ladder", 
+    "HH_Net_Income_PA",
+    "Age" ] 
 
 function joinv3v4( dall3::DataFrame, dall4::DataFrame)::Tuple
     # tmp hate vars in 4 data
@@ -103,19 +114,37 @@ function joinv3v4( dall3::DataFrame, dall4::DataFrame)::Tuple
     dc4 = dc4[ in.(dc4.PROLIFIC_PID, ( threepids, )), : ]
     =#
     stacked = vcat( dc3, dc4, cols=:intersect )
+    # cut down joined to just shared things, rename stuff to v3/v4
+    nms = names(stacked)
+    nm2 = copy( nms ) .* "_1"
+    allnames = vcat(nms,nm2)
+    deleteat!(allnames, findall(x->x=="PROLIFIC_PID_1",allnames))
+    select!( joined, allnames ... )
+    for n in allnames
+        if n == "PROLIFIC_PID"
+            ;
+        else
+            m = match( r"(.*)_1", n )
+            if isnothing(m)
+                rename!( joined, n => n*"_v3")
+            else
+                rename!( joined, n => m[1]*"_v4") 
+            end  
+        end
+    end 
+    # add deltas of important stuff
+    for c in CORR_TARGETS
+        presym = Symbol( c * "_v3" )
+        postsym = Symbol( c * "_v4")
+        dsym = Symbol( "Δ_" * c )
+        joined[!,dsym] = joined[!,postsym] - joined[!,presym]
+    end
+
     sort!( stacked, [:PROLIFIC_PID,:EndDate])
     @assert size(joined)[1]*2 == size(stacked)[1] "n joined= $(size(joined)[1]*2); n stacked= $(size(stacked)[1])"
     joined, stacked
 end
 
-const CORR_TARGETS = [
-    "basic_income_post",
-    "In_Control_Of_Life",
-    "gad_7",
-    "phq_8",
-    "Ladder", 
-    "HH_Net_Income_PA",
-    "Age" ] 
 
   
 
@@ -127,8 +156,8 @@ function pre_post_scatter(
     f = Figure()
     vname = pretty( var )
     vby = pretty( by )
-    presym = Symbol( var )
-    postsym = Symbol( var* "_1")
+    presym = Symbol( var* "_v3" )
+    postsym = Symbol( var* "_v4")
     bysym = Symbol( by )
     title = vname 
     subtitle = "Change between Surveys 3 and 4 by $vby"
@@ -160,30 +189,38 @@ end
 function analyse( joined :: DataFrame )
     anal = Dict()
     for c in CORR_TARGETS
-        presym = Symbol(c)
-        postsym = Symbol( "$(c)_1")
+        presym = Symbol( "$(c)_v3")
+        postsym = Symbol( "$(c)_v4")
         fig_gender = pre_post_scatter( 
             joined, 
             c, 
-            "Gender",
+            "Gender_v3",
             GENDER_MAP )
         fig_pol = pre_post_scatter( 
             joined, 
             c, 
-            "next_election",
+            "next_election_v3",
             POL_MAP )
-        s_w3 = summarystats( joined[!,presym] )
-        s_w4 = summarystats( joined[!,postsym] )
+        s_v3 = summarystats( joined[!,presym] )
+        s_v4 = summarystats( joined[!,postsym] )
         corr = cor( joined[ !, presym], joined[ !, postsym] )
-        anal[c] = (; fig_gender, fig_pol, s_w3, s_w4, corr )         
+        anal[c] = (; fig_gender, fig_pol, s_v3, s_v4, corr )         
     end
     
-    counts = (; gender=countmap(joined.Gender_1), vote_intention_2022=countmap(joined.next_election), 
-        vote_intention_2024=countmap(joined.next_election_1),
-        bi_lovers_v3=countmap(joined.lovers_post), bi_haters_v3=countmap(joined.haters_post),
-        bi_lovers_v4=countmap(joined.lovers_post_1), bi_haters_v4=countmap(joined.haters_post_1))
+    counts = (; gender=countmap(joined.Gender_v3), vote_intention_2022=countmap(joined.next_election_v3), 
+        vote_intention_2024=countmap(joined.next_election_v4),
+        bi_lovers_v3=countmap(joined.lovers_post_v3), bi_haters_v3=countmap(joined.haters_post_v3),
+        bi_lovers_v4=countmap(joined.lovers_post_v4), bi_haters_v4=countmap(joined.haters_post_v4))
 
     return anal, counts
+end
+
+function do_delta_regs( joined :: DataFrame ) :: Tuple
+    f1 = @formula( Δ_basic_income_post ~ 1 + Δ_HH_Net_Income_PA +  Δ_At_Risk_of_Destitution + Δ_gad_7 + Δ_phq_8 + Δ_Ladder + Age_v3 + Gender_v3 )
+    r1 = lm( f1, joined )
+    f2 = @formula( Δ_basic_income_post ~ 1 +  Δ_At_Risk_of_Destitution + Δ_gad_7 + Δ_phq_8 + Δ_Ladder + Age_v3 + Gender_v3 )
+    r2 = lm( f2, joined )
+    r1, r2
 end
 
 function do_mixed_regressons( stacked :: DataFrame ) :: Tuple
@@ -217,15 +254,15 @@ function make_md_page( stats::Dict, counts :: NamedTuple )
         save( "tmp/img/fig-pol-$(c).svg", e.fig_pol)
         print( io, "| $pc ")
         print( io, "| $(f2(e.corr))")
-        print( io, "| $(f2(e.s_w3.mean))")
-        print( io, "| $(f2(e.s_w4.mean))")
-        print( io, "| $(f2(e.s_w3.median))")
-        print( io, "| $(f2(e.s_w4.median))")
-        print( io, "| $(f2(e.s_w3.sd ))")
-        print( io, "| $(f2(e.s_w4.sd ))")
+        print( io, "| $(f2(e.s_v3.mean))")
+        print( io, "| $(f2(e.s_v4.mean))")
+        print( io, "| $(f2(e.s_v3.median))")
+        print( io, "| $(f2(e.s_v4.median))")
+        print( io, "| $(f2(e.s_v3.sd ))")
+        print( io, "| $(f2(e.s_v4.sd ))")
         print( io, "| ![image of $c by gender](img/fig-gender-$(c).svg) ")
         print( io, "| ![image of $c by pol](img/fig-pol-$(c).svg) ")
-        println( io, "| $(e.s_w4.nobs ) |")
+        println( io, "| $(e.s_v4.nobs ) |")
         # fig_gender, fig_pol, s_w3, s_w4, corr
     end
     println( io, "\n\n## SOME COUNTS\n")
