@@ -3,18 +3,19 @@
 # 
 # FIXME check which graphics are actually used here
 using 
-    Makie,
-    CairoMakie,
     AlgebraOfGraphics,
+    CairoMakie,
     CategoricalArrays,
     ColorSchemes,
     CSV,
     DataFrames,
+    FixedEffectModels,
     Format,
     GLM,
     HypothesisTests,
-    MultivariateStats,
+    Makie,
     MixedModels,
+    MultivariateStats,
     PrettyTables,
     RegressionTables,
     StatsBase,
@@ -54,9 +55,7 @@ const MAIN_EXPLANDICT = Dict([
     "gad_7" => "GAD-7 Generalized Anxiety Disorder 7",
     "phq_8" => "PHQ-8 Personal Health Questionnaire Depression Scale",
     "sqrt_gad_7" => "Square Root of GAD-7 Generalized Anxiety Disorder 7",
-    "sqrt_phq_8" => "Square Root of PHQ-8 Personal Health Questionnaire Depression Scale",
-
-    ])
+    "sqrt_phq_8" => "Square Root of PHQ-8 Personal Health Questionnaire Depression Scale"])
 
 const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 

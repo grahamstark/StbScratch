@@ -133,16 +133,30 @@ function joinv3v4( dall3::DataFrame, dall4::DataFrame)::Tuple
         end
     end 
     # add deltas of important stuff
+    toskip_logs = Set{Int}()
     for c in CORR_TARGETS
         presym = Symbol( c * "_v3" )
         postsym = Symbol( c * "_v4")
         dsym = Symbol( "Δ_" * c )
+        dlsym = Symbol( "Δ_log_" * c )
         joined[!,dsym] = joined[!,postsym] - joined[!,presym]
+        joined[!,dlsym] = log.(joined[!,postsym]) - log.(joined[!,presym])
     end
-
+    # I dare say there's a 1-liner version of this ... 
+    i = 0
+    for r in eachrow( joined )
+        i += 1
+        for c in CORR_TARGETS
+            dlsym = Symbol( "Δ_log_" * c )
+            v = r[dlsym]
+            if isinf( v ) || isnan( v ) || ismissing( v )
+                push!( toskip_logs, i )
+            end 
+        end 
+    end
     sort!( stacked, [:PROLIFIC_PID,:EndDate])
     @assert size(joined)[1]*2 == size(stacked)[1] "n joined= $(size(joined)[1]*2); n stacked= $(size(stacked)[1])"
-    joined, stacked
+    joined, stacked, toskip_logs
 end
 
 
@@ -215,12 +229,37 @@ function analyse( joined :: DataFrame )
     return anal, counts
 end
 
-function do_delta_regs( joined :: DataFrame ) :: Tuple
-    f1 = @formula( Δ_basic_income_post ~ 1 + Δ_HH_Net_Income_PA +  Δ_At_Risk_of_Destitution + Δ_gad_7 + Δ_phq_8 + Δ_Ladder + Age_v3 + Gender_v3 )
-    r1 = lm( f1, joined )
-    f2 = @formula( Δ_basic_income_post ~ 1 +  Δ_At_Risk_of_Destitution + Δ_gad_7 + Δ_phq_8 + Δ_Ladder + Age_v3 + Gender_v3 )
-    r2 = lm( f2, joined )
-    r1, r2
+function do_delta_regs( joined :: DataFrame, toskip_logs :: Set ) :: Vector
+    regs = []
+    f1 = @formula( Δ_basic_income_post ~ 1 + Δ_HH_Net_Income_PA +  Δ_At_Risk_of_Destitution + Δ_gad_7 + Δ_phq_8 + Δ_Ladder + Age_v3 + Gender_v3 + next_election_v3 )
+    push!( regs, lm( f1, joined ) )
+    f2 = @formula( Δ_basic_income_post ~ 1 + Δ_HH_Net_Income_PA +  Δ_At_Risk_of_Destitution + Δ_gad_7 + Δ_phq_8 + Δ_Ladder + Age_v3 + Gender_v3 )
+    push!( regs, lm( f2, joined ) )
+    f3 = @formula( Δ_basic_income_post ~ 1 +  Δ_At_Risk_of_Destitution + Δ_gad_7 + Δ_phq_8 + Δ_Ladder + Age_v3 + Gender_v3 )
+    push!( regs, lm( f3, joined ) )
+    f4 = @formula( Δ_basic_income_post ~ 1 +  Δ_At_Risk_of_Destitution + Δ_Ladder + Age_v3 + Gender_v3 )
+    push!( regs, lm( f4, joined ) )
+    f5 = @formula( Δ_basic_income_post ~ 1 +  Δ_At_Risk_of_Destitution + Age_v3 + Gender_v3 )
+    push!( regs, lm( f5, joined ) )
+    f6 = @formula( Δ_basic_income_post ~ 1 +  Δ_At_Risk_of_Destitution )
+    push!( regs, lm( f6, joined ) )
+    n = size(joined)[1]
+    todo = sort( setdiff(1:n, toskip_logs ))
+    goodj = joined[todo,:]
+    f1 = @formula( Δ_log_basic_income_post ~ 1 + Δ_log_HH_Net_Income_PA +  Δ_log_At_Risk_of_Destitution + Δ_log_gad_7 + Δ_log_phq_8 + Δ_log_Ladder + Age_v3 + Gender_v3 + next_election_v3 )
+    push!( regs, lm( f1, goodj ) )
+    f2 = @formula( Δ_log_basic_income_post ~ 1 + Δ_log_HH_Net_Income_PA +  Δ_log_At_Risk_of_Destitution + Δ_log_gad_7 + Δ_log_phq_8 + Δ_log_Ladder + Age_v3 + Gender_v3 )
+    push!( regs, lm( f2, goodj ) )
+    f3 = @formula( Δ_log_basic_income_post ~ 1 +  Δ_log_At_Risk_of_Destitution + Δ_log_gad_7 + Δ_log_phq_8 + Δ_log_Ladder + Age_v3 + Gender_v3 )
+    push!( regs, lm( f3, goodj ) )
+    f4 = @formula( Δ_log_basic_income_post ~ 1 +  Δ_log_At_Risk_of_Destitution + Δ_log_Ladder + Age_v3 + Gender_v3 )
+    push!( regs, lm( f4, goodj ) )
+    f5 = @formula( Δ_log_basic_income_post ~ 1 +  Δ_log_At_Risk_of_Destitution + Age_v3 + Gender_v3 )
+    push!( regs, lm( f5, goodj ) )
+    f6 = @formula( Δ_log_basic_income_post ~ 1 +  Δ_log_At_Risk_of_Destitution )
+    push!( regs, lm( f6, goodj ) )
+    regtable(regs[1:5]...;file="tmp/deltaregs-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), below_statistic = TStat )
+    regs
 end
 
 function do_mixed_regressons( stacked :: DataFrame ) :: Tuple
