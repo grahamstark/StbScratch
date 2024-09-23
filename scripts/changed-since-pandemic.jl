@@ -22,16 +22,25 @@ function create_income( r :: DataFrameRow ) :: Union{Real,Missing}
     i * m * CPI_DELTA_FEB_22_JAN_24
 end
 
-function incomes_in_range( r :: DataFrameRow )
+function incomes_in_range( r :: DataFrameRow ) :: Bool
     if (r.HH_Net_Income_PA <= 0) || (r.HH_Net_Income_PA_1 <= 0)
         return false
     else
         rat = r.HH_Net_Income_PA_1/r.HH_Net_Income_PA
-        if (r.HH_Net_Income_PA > 1_00_000)||r.HH_Net_Income_PA_1 > 1_000_000
+        if (r.HH_Net_Income_PA > 1_000_000)||r.HH_Net_Income_PA_1 > 1_000_000
             return false
         elseif (rat > 3) || (rat < (1/3))
             return false
         end
+    end
+    return true
+end
+
+function age_and_sex_change_sensible( r :: DataFrameRow ) :: Bool
+    if ! (r.Age_v4 - r.Age_v3) in 1:2 
+        return false
+    elseif r.Gender_v4 !== r.Gender_v3
+        return false
     end
     return true
 end
