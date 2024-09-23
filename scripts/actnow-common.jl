@@ -158,7 +158,7 @@ const RENAMES_V3 = Dict([
     "Q56"=>"Party_Next_Election",
     "Q56_7_TEXT"=>"Party_Next_Election_Other",
     "Q40_1"=>"Politicians_All_The_Same",
-    "Q40_2"=>"Politics_Force_For_Good’",
+    "Q40_2"=>"Politics_Force_For_Good",
     "Q40_3"=>"Party_In_Government_Doesnt_Matter",
     "Q40_4"=>"Politicians_Dont_Care",
     "Q40_5"=>"Politicians_Want_To_Make_Things_Better",
@@ -189,6 +189,32 @@ const GAD_7 = [
     "Trouble_Concentrating",
     "More_Restless_Than_Usual" ]
 
+const TRUST_POL = [
+    "Politicians_All_The_Same",
+    "Politics_Force_For_Good",
+    "Party_In_Government_Doesnt_Matter",
+    "Politicians_Dont_Care",
+    "Politicians_Want_To_Make_Things_Better",
+    "Shouldnt_Rely_On_Government" ]
+
+"""
+return 24 (most) .. 0 least 
+"""
+function build_trust( r :: DataFrameRow )::Int
+    trust = 0
+    pm = r"([0-9])\.(.*)" # 5. Strongly agree" and so on - extract the '5'
+    for t in TRUST_POL
+        # score each 0..4 
+        m = match( pm, r[t])
+        tl = parse(Int, m[1])-1
+        # reverse good ones 
+        if t in ["Politics_Force_For_Good","Politicians_Want_To_Make_Things_Better"]
+            tl = 4 - tl
+        end
+        trust += tl 
+    end
+    return 24-trust # 24 (4x6) is most trusting ... 
+end
 
 function lpretty( s :: AbstractString ) :: String
     o = pretty( s )

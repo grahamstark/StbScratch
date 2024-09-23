@@ -84,6 +84,7 @@ function load_dall_v3()
     dd2.haters_post = dd2.basic_income_post .< 30 
     dd2.lovers_post = dd2.basic_income_post .> 70
     dd2.Gender = recode_gender.( dd2.Gender )
+    dall.trust_in_politics = build_trust.( eachrow( dall ))
     return dd2
 end
 
@@ -328,3 +329,6 @@ function make_md_page( stats::Dict, counts :: NamedTuple )
     println( io, "\n\n" )
     close( io )
 end
+
+function do_fixed_effects( joined :: DataFrame ) :: Tuple 
+    f1 = @formula(basic_income_post ~ gad_7 + phq_8 + HH_Net_Income_PA + Ladder + At_Risk_of_Destitution + fe( PROLIFIC_PID ))

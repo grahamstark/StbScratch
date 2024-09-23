@@ -124,7 +124,7 @@ function PValue(rr::RegressionModel, k::Int; vargs...)
 end
 
 
-function make_dataset()::DataFrame
+function make_dataset_v4()::DataFrame
 
     dn = CSV.File("$(DATA_DIR)/national_censored.csv")|>DataFrame
     dr = CSV.File("$(DATA_DIR)/red_censored.csv")|>DataFrame
@@ -167,7 +167,7 @@ function make_dataset()::DataFrame
     dall.age_sq = dall.Age .^2
     dall.Gender= convert.(String,dall.Gender)
     dall.Gender = recode_gender.( dall.Gender )
-
+    dall.trust_in_politics = build_trust.( eachrow( dall ))
     dall.Owner_Occupier= convert.(String,dall.Owner_Occupier)
     dall.General_Health= convert.(String,dall.General_Health)
 
