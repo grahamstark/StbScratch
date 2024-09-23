@@ -99,13 +99,14 @@ end
 Hacky fix of income where some people seem to have entered in £000s rather than £s
 """
 function recode_income( inc )
-    return if ismissing( inc )
+    oinc = if ismissing( inc )
         missing
     elseif inc < 100
         inc * 1000
     else
         inc
   end
+  return oinc/1_000.0
 end
 
 #
@@ -123,7 +124,9 @@ function PValue(rr::RegressionModel, k::Int; vargs...)
     PValue(RegressionTables._pvalue(rr)[k])
 end
 
-
+"""
+Initial load and construction of v4 dataset.
+"""
 function make_dataset_v4()::DataFrame
 
     dn = CSV.File("$(DATA_DIR)/national_censored.csv")|>DataFrame

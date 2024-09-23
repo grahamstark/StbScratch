@@ -3,7 +3,7 @@
 #
 include("actnow-common.jl")
 
-function create_income( r :: DataFrameRow ) :: Union{Real,Missing}
+function create_income( r :: DataFrameRow; uprate = true  ) :: Union{Real,Missing}
     i = r.Q13
     if ismissing(i)
         return missing
@@ -19,7 +19,11 @@ function create_income( r :: DataFrameRow ) :: Union{Real,Missing}
         @assert false "unknown $(r.Q14)"
     end
     # uprated from FEB 2022 to Jan 2024 for comparability with V4 survey
-    i * m * CPI_DELTA_FEB_22_JAN_24
+    inc = i * m / 1000.0
+    if uprate
+        inc *= CPI_DELTA_FEB_22_JAN_24
+    end
+    inc
 end
 
 function incomes_in_range( r :: DataFrameRow ) :: Bool
@@ -27,7 +31,7 @@ function incomes_in_range( r :: DataFrameRow ) :: Bool
         return false
     else
         rat = r.HH_Net_Income_PA_1/r.HH_Net_Income_PA
-        if (r.HH_Net_Income_PA > 1_000_000)||r.HH_Net_Income_PA_1 > 1_000_000
+        if (r.HH_Net_Income_PA > 1_000)||r.HH_Net_Income_PA_1 > 1_000
             return false
         elseif (rat > 3) || (rat < (1/3))
             return false
@@ -74,7 +78,7 @@ function load_dall_v3()
         dd2.Support_flourishing, 
         dd2.Support_security )
     dropmissing!( dd2, :basic_income_post )    
-    dd2.HH_Net_Income_PA = create_income.( eachrow( dd2 ))
+    dd2.HH_Net_Income_PA = create_income.( eachrow( dd2 ); uprate=true)
     dd2.gad_7 = health_score.(eachrow(dd2), GAD_7...)
     dd2.phq_8 = health_score.(eachrow(dd2), PHQ_8...)
     dd2.sqrt_gad_7 = sqrt.(dd2.gad_7)
@@ -84,7 +88,7 @@ function load_dall_v3()
     dd2.haters_post = dd2.basic_income_post .< 30 
     dd2.lovers_post = dd2.basic_income_post .> 70
     dd2.Gender = recode_gender.( dd2.Gender )
-    dall.trust_in_politics = build_trust.( eachrow( dall ))
+    dd2.trust_in_politics = build_trust.( eachrow( dd2 ))
     return dd2
 end
 
@@ -96,6 +100,7 @@ const CORR_TARGETS = [
     "phq_8",
     "Ladder", 
     "HH_Net_Income_PA",
+    "trust_in_politics",
     "Age" ] 
 
 function joinv3v4( dall3::DataFrame, dall4::DataFrame)::Tuple
@@ -182,6 +187,21 @@ function pre_post_scatter(
     vby = pretty( by )
     presym = Symbol( var* "_v3" )
     postsym = Symbol( var* "_v4")
+    nobs = size( joined )[1]
+    #= TODO FINISH circle sizes by count 
+    predat = joined[!, presim]
+    postdat = joined[!, postsim]
+    sizes = fill( 1, nobs )
+    if eltype( predat ) <: Integer 
+        occurs = fill(0, nobs, nobs )
+        # make_mat( joined[!, presim], joined[!, postsym ])
+        for i in 1:nobs
+            for j in 1:nobs
+                occurs[ preddat[j], postdat[j]] += 1
+            end
+        end
+    end
+    =#
     bysym = Symbol( by )
     title = vname 
     subtitle = "Change between Surveys 3 and 4 by $vby"
@@ -210,7 +230,7 @@ function pre_post_scatter(
     return f
 end
 
-function analyse( joined :: DataFrame )
+function analyse( joined :: DataFrame, dall3 :: DataFrame, dall4 :: DataFrame )
     anal = Dict()
     for c in CORR_TARGETS
         presym = Symbol( "$(c)_v3")
@@ -231,12 +251,25 @@ function analyse( joined :: DataFrame )
         anal[c] = (; fig_gender, fig_pol, s_v3, s_v4, corr )         
     end
     
-    counts = (; gender=countmap(joined.Gender_v3), vote_intention_2022=countmap(joined.next_election_v3), 
+    # summaries from joined data
+    counts_joined = (; gender=countmap(joined.Gender_v3), 
+        vote_intention_2022=countmap(joined.next_election_v3), 
         vote_intention_2024=countmap(joined.next_election_v4),
-        bi_lovers_v3=countmap(joined.lovers_post_v3), bi_haters_v3=countmap(joined.haters_post_v3),
-        bi_lovers_v4=countmap(joined.lovers_post_v4), bi_haters_v4=countmap(joined.haters_post_v4))
+        bi_lovers_v3=countmap(joined.lovers_post_v3), 
+        bi_haters_v3=countmap(joined.haters_post_v3),
+        bi_lovers_v4=countmap(joined.lovers_post_v4), 
+        bi_haters_v4=countmap(joined.haters_post_v4))
+    # and from indidivual datasets, to kinda sorta check 
+    # for attrition bias
+    counts_all = (; gender=countmap(dall3.Gender), 
+        vote_intention_2022=countmap(dall3.next_election), 
+        vote_intention_2024=countmap(dall4.next_election),
+        bi_lovers_v3=countmap(dall3.lovers_post), 
+        bi_haters_v3=countmap(dall3.haters_post),
+        bi_lovers_v4=countmap(dall3.lovers_post), 
+        bi_haters_v4=countmap(dall4.haters_post))
 
-    return anal, counts
+    return anal, counts_joined, counts_all
 end
 
 function do_delta_regs( joined :: DataFrame, toskip_logs :: Set ) :: Vector
@@ -292,7 +325,7 @@ function do_mixed_regressons( stacked :: DataFrame ) :: Tuple
     fm1, fm2, fm3, fm4
 end
 
-function make_md_page( stats::Dict, counts :: NamedTuple )
+function make_md_page( stats::Dict, counts_joined :: NamedTuple, counts_all :: NamedTuple )
     io = open( "tmp/v3-v4-insert.md", "w")
     println(io, "| | Correlation W3->W4 | mean W3| Mean W4 | Median W3 | Median W4 | SD W3 | SD W4 | N | | |")
     println(io, "| ------------ "^11, "|")
@@ -316,13 +349,24 @@ function make_md_page( stats::Dict, counts :: NamedTuple )
     end
     println( io, "\n\n## SOME COUNTS\n")
     for c in [:gender, :vote_intention_2022, :vote_intention_2024, :bi_lovers_v3, :bi_lovers_v4, :bi_haters_v3, :bi_haters_v4]
-        m = counts[c]
+        mj = counts_joined[c]
+        ma = counts_all[c]
+        pmj = Dict()
+        summj = sum( values(mj))
+        pma = Dict()
+        summa = sum( values(ma))
+        for (k,v) in mj
+            pmj[k] = f2(100*v/summj)
+        end
+        for (k,v) in ma
+            pma[k] = f2(100*v/summa)
+        end
         title = pretty( string(c))
         println( io, "### $title\n\n")
-        println( io, "| | N | ")
-        println( io, "| ------ | ------- |")
-        for k in sort( collect(keys(m) ))
-            println( io,  "| $k | $(m[k]) |")
+        println( io, "| | Count (In Both Samples) | % |Count (Inc. Dropouts) | % |")
+        println( io, "| ------ | ------- | ------- | ------- | ------- |")
+        for k in sort( collect(keys(mj) ))
+            println( io,  "| $k | $(mj[k])| $(pmj[k]) | $(ma[k]) |$(pma[k]) |")
         end
         println( io, "\n\n")
     end
@@ -330,5 +374,31 @@ function make_md_page( stats::Dict, counts :: NamedTuple )
     close( io )
 end
 
-function do_fixed_effects( joined :: DataFrame ) :: Tuple 
-    f1 = @formula(basic_income_post ~ gad_7 + phq_8 + HH_Net_Income_PA + Ladder + At_Risk_of_Destitution + fe( PROLIFIC_PID ))
+function do_fixed_effects( stacked :: DataFrame ) :: Vector
+    regs = []
+    f = @formula(basic_income_post ~ At_Risk_of_Destitution + HH_Net_Income_PA + gad_7 + phq_8 + Ladder + trust_in_politics  + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    f = @formula(basic_income_post ~ At_Risk_of_Destitution + HH_Net_Income_PA + gad_7 + phq_8 + Ladder + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    f = @formula(basic_income_post ~ At_Risk_of_Destitution + HH_Net_Income_PA + gad_7 + phq_8 + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    f = @formula(basic_income_post ~ At_Risk_of_Destitution + HH_Net_Income_PA + gad_7 + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    f = @formula(basic_income_post ~ At_Risk_of_Destitution + HH_Net_Income_PA  + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    f = @formula(basic_income_post ~ At_Risk_of_Destitution  + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    f = @formula(basic_income_post ~ HH_Net_Income_PA  + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    f = @formula(basic_income_post ~ At_Risk_of_Destitution + HH_Net_Income_PA + gad_7 + phq_8  + trust_in_politics + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    f = @formula(basic_income_post ~ At_Risk_of_Destitution + HH_Net_Income_PA + gad_7 + trust_in_politics + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    f = @formula(basic_income_post ~ At_Risk_of_Destitution + HH_Net_Income_PA + trust_in_politics  + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    f = @formula(basic_income_post ~ At_Risk_of_Destitution  + trust_in_politics + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    f = @formula(basic_income_post ~ HH_Net_Income_PA  + trust_in_politics + fe( PROLIFIC_PID ))
+    push!( regs, reg( stacked, f ))
+    regs
+end
