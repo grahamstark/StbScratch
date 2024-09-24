@@ -16,3 +16,4 @@ summaries, counts_joined, counts_all = analyse(joined, dall3, dall4 )
 
 fregs = do_fixed_effects( stacked )
 regtable(fregs...;file="tmp/fixed-effect-regs.html",number_regressions=true, stat_below = false, render=HtmlTable(), below_statistic = TStat )
+make_md_page( summaries, counts_joined, counts_all )

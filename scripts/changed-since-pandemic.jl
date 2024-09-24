@@ -266,7 +266,7 @@ function analyse( joined :: DataFrame, dall3 :: DataFrame, dall4 :: DataFrame )
         vote_intention_2024=countmap(dall4.next_election),
         bi_lovers_v3=countmap(dall3.lovers_post), 
         bi_haters_v3=countmap(dall3.haters_post),
-        bi_lovers_v4=countmap(dall3.lovers_post), 
+        bi_lovers_v4=countmap(dall4.lovers_post), 
         bi_haters_v4=countmap(dall4.haters_post))
 
     return anal, counts_joined, counts_all
