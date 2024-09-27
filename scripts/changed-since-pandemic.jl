@@ -87,6 +87,8 @@ function load_dall_v3()
     dd2.next_election_condensed .= recode_party.( dd2.Party_Next_Election, condensed=true )
     dd2.haters_post = dd2.basic_income_post .< 30 
     dd2.lovers_post = dd2.basic_income_post .> 70
+    dd2.zeros_post = dd2.basic_income_post .== 0
+    dd2.hundreds_post = dd2.basic_income_post .== 100
     dd2.Gender = recode_gender.( dd2.Gender )
     dd2.trust_in_politics = build_trust.( eachrow( dd2 ))
     return dd2
@@ -107,6 +109,8 @@ function joinv3v4( dall3::DataFrame, dall4::DataFrame)::Tuple
     # tmp hate vars in 4 data
     dall4.haters_post = dall4.basic_income_post .< 30 
     dall4.lovers_post = dall4.basic_income_post .> 70
+    dall4.zeros_post = dall4.basic_income_post .== 0
+    dall4.hundreds_post = dall4.basic_income_post .== 100
 
     dc3 = deepcopy(dall3)
     dc4 = deepcopy(dall4)
@@ -258,7 +262,11 @@ function analyse( joined :: DataFrame, dall3 :: DataFrame, dall4 :: DataFrame )
         bi_lovers_v3=countmap(joined.lovers_post_v3), 
         bi_haters_v3=countmap(joined.haters_post_v3),
         bi_lovers_v4=countmap(joined.lovers_post_v4), 
-        bi_haters_v4=countmap(joined.haters_post_v4))
+        bi_haters_v4=countmap(joined.haters_post_v4),
+        bi_0_v3=countmap(joined.zeros_post_v3),
+        bi_100_v3=countmap(joined.hundreds_post_v3),
+        bi_0_v4=countmap(joined.zeros_post_v4),
+        bi_100_v4=countmap(joined.hundreds_post_v4))
     # and from indidivual datasets, to kinda sorta check 
     # for attrition bias
     counts_all = (; gender=countmap(dall3.Gender), 
@@ -348,7 +356,8 @@ function make_md_page( stats::Dict, counts_joined :: NamedTuple, counts_all :: N
         # fig_gender, fig_pol, s_w3, s_w4, corr
     end
     println( io, "\n\n## SOME COUNTS\n")
-    for c in [:gender, :vote_intention_2022, :vote_intention_2024, :bi_lovers_v3, :bi_lovers_v4, :bi_haters_v3, :bi_haters_v4]
+    for c in [:gender, :vote_intention_2022, :vote_intention_2024, :bi_lovers_v3, :bi_lovers_v4, :bi_haters_v3, :bi_haters_v4, 
+        :bi_0_v3, :bi_0_v4, :bi_100_v3, :bi_100_v4]
         mj = counts_joined[c]
         ma = counts_all[c]
         pmj = Dict()
