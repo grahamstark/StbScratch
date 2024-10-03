@@ -19,9 +19,10 @@ using
     PrettyTables,
     RegressionTables,
     StatsBase,
+    StructuralEquationModels,
     SurveyDataWeighting,
     Tidier
-
+    
 using ScottishTaxBenefitModel
 using .Utils 
     
