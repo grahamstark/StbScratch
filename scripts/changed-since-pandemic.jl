@@ -275,7 +275,11 @@ function analyse( joined :: DataFrame, dall3 :: DataFrame, dall4 :: DataFrame )
         bi_lovers_v3=countmap(dall3.lovers_post), 
         bi_haters_v3=countmap(dall3.haters_post),
         bi_lovers_v4=countmap(dall4.lovers_post), 
-        bi_haters_v4=countmap(dall4.haters_post))
+        bi_haters_v4=countmap(dall4.haters_post),
+        bi_0_v3=countmap(dall3.zeros_post),
+        bi_100_v3=countmap(dall3.hundreds_post),
+        bi_0_v4=countmap(dall4.zeros_post),
+        bi_100_v4=countmap(dall4.hundreds_post))
 
     return anal, counts_joined, counts_all
 end
