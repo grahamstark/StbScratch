@@ -1093,9 +1093,9 @@ function make_and_print_summarystats( dall :: DataFrame )
 end
 
 
-function policies_as_matrix( dall :: DataFrame; normalise=true )::Matrix
+function policies_as_matrix( dall :: DataFrame, extension::String; normalise=true )::Matrix
     # FIXME next 2 are dups
-    pol = Symbol.(string.(POLICIES) .* "_pre")
+    pol = Symbol.(string.(POLICIES) .* extension ) #"_pre")
     n = length(pol)
     d = Matrix{Float64}( dall[!,pol] )'
     # normalize
@@ -1115,18 +1115,25 @@ end
 See: https://juliastats.org/MultivariateStats.jl/dev/pca/#Linear-Principal-Component-Analysis
 See: https://www.youtube.com/watch?v=FgakZw6K1QQ
 """
-function do_basic_pca( dall :: DataFrame; maxoutdim = 3 )::Tuple
+function do_basic_pca( dall :: DataFrame; extension::String, maxoutdim = 3 )::Tuple
     #=
     pol = Symbol.(string.(POLICIES) .* "_pre")
     data = Matrix( dall[!,pol] )'
     =#
-    data =policies_as_matrix( dall )
+
+    data =policies_as_matrix( dall, extension )
     M = fit(PCA, data; maxoutdim=maxoutdim)
-    prediction = DataFrame( predict(M,data)',["PC1","PC2","PC3"])
-    M, data,prediction
+    prediction = DataFrame( predict(M,data)',["PC1$(extension)","PC2$(extension)","PC3$(extension)"])
+    M, data, prediction
 end
 
-function one_pca( dall :: DataFrame, which :: Symbol, colours :: Dict )
+function do_basic_pca( dall :: DataFrame )::Tuple
+    MPre, data_pre, prediction_pre =  do_basic_pca( dall; extension="_pre" )
+    M_change, data_change, prediction_change =  do_basic_pca( dall; extension="_change" )
+    MPre, data_pre, prediction_pre, M_change, data_change, prediction_change
+end
+
+function one_pca( dall :: DataFrame, which :: Symbol, colours :: Dict, extension::String )
     f = Figure(fontsize=12, size = (640, 640))
     ax = Axis3(f[1,1],xlabel="PC1",ylabel="PC2", zlabel="PC3", title=pretty( string(which)))
     for (k, colour) in colours
@@ -1138,12 +1145,16 @@ function one_pca( dall :: DataFrame, which :: Symbol, colours :: Dict )
         else 
             pretty("$k")
         end
-        subset = dall[dall[!,which] .== k,[:PC1,:PC2,:PC3]]
+        k1 = Symbol( "PC1$(extension)")
+        k2 = Symbol( "PC2$(extension)")
+        k3 = Symbol( "PC3$(extension)")
+        println( "k1=$k1 k2=$k2 k3=$k3")
+        subset = dall[dall[!,which] .== k,[k1,k2,k3]]
         sc = scatter!( 
             ax, 
-            subset.PC1, 
-            subset.PC2, 
-            subset.PC3;
+            subset[!,k1], 
+            subset[!,k2], 
+            subset[!,k3];
             label=label,
             markersize=5,
             color=colour)
@@ -1152,14 +1163,14 @@ function one_pca( dall :: DataFrame, which :: Symbol, colours :: Dict )
     f
 end
 
-function make_pca_graphs( dall :: DataFrame )
+function make_pca_graphs( dall :: DataFrame, extension::String )
     graphs = Dict()
-    graphs[:last_election] = one_pca(dall,:last_election,POL_MAP)
-    graphs[:Owner_Occupier] = one_pca(dall,:Owner_Occupier,BOOL_MAP)
-    graphs[:Gender] = one_pca(dall,:Gender, GENDER_MAP)
-    graphs[:ethnic_2] = one_pca(dall,:ethnic_2, ETHNIC_MAP )
-    graphs[:destitute] = one_pca(dall,:destitute,BOOL_MAP_2)
-    graphs[:not_managing_financially] = one_pca(dall,:not_managing_financially,BOOL_MAP_2)
+    graphs[:last_election] = one_pca(dall,:last_election,POL_MAP, extension)
+    graphs[:Owner_Occupier] = one_pca(dall,:Owner_Occupier,BOOL_MAP, extension)
+    graphs[:Gender] = one_pca(dall,:Gender, GENDER_MAP, extension)
+    graphs[:ethnic_2] = one_pca(dall,:ethnic_2, ETHNIC_MAP, extension )
+    graphs[:destitute] = one_pca(dall,:destitute,BOOL_MAP_2, extension)
+    graphs[:not_managing_financially] = one_pca(dall,:not_managing_financially,BOOL_MAP_2, extension)
     graphs
 end
 
@@ -1194,19 +1205,22 @@ function kmo_test( m :: AbstractMatrix )
     return cs / (ps+cs)
 end
 #
-function make_pc_crosstabs( dall )
+function make_pc_crosstabs( dall::DataFrame, extension::String )::Dict
     cts = Dict()
+    k1 = Symbol( "PC1$(extension)")
+    k2 = Symbol( "PC2$(extension)")
+    k3 = Symbol( "PC3$(extension)")
     for col in PCA_BREAKDOWNS
         gd = groupby( dall, col )
         ct = combine( gd,
             nrow,
             proprow,
-            (:PC1=>mean),
-            (:PC1=>std),
-            (:PC2=>mean),
-            (:PC2=>std),
-            (:PC3=>mean),
-            (:PC3=>std)) 
+            (k1=>mean),
+            (k1=>std),
+            (k2=>mean),
+            (k2=>std),
+            (k3=>mean),
+            (k3=>std)) 
         cts[col] = ct
     end
     cts
@@ -1221,39 +1235,55 @@ function screeplot( xdata :: AbstractMatrix )
     f
 end
 
-function summarise_pca( dall :: DataFrame, M )
-    crosstabs = make_pc_crosstabs( dall )
-    graphs = make_pca_graphs( dall )
-    pca_text = read("docs/pca-1.md", String)
-    xdata = policies_as_matrix( dall )
+function summarise_pca( dall :: DataFrame, M, extension :: String )
+    crosstabs = make_pc_crosstabs( dall, extension )
+    graphs = make_pca_graphs( dall, extension )
+    pca_text = read("docs/pca$(extension).md", String)
+    xdata = policies_as_matrix( dall, extension )
     kmo = fmt(kmo_test( xdata ))
     scp = screeplot( xdata )
-    save( "tmp/img/scree-plot.svg", scp )
-    save( "tmp/img/scree-plot.png", scp )
+    save( "tmp/img/scree-plot$(extension).svg", scp )
+    save( "tmp/img/scree-plot$(extension).png", scp )
     loads = loadings(M)
     # reverse the sign of the 1st set of loads to match
     # what Julia prints - no idea whatsoever.
     loads[:,1] .= loads[:,1] .* -1
-    pcf = DataFrame( names=pretty.(string.(POLICIES)),
+    pcf = DataFrame( names=pretty.( string.(POLICIES)),
         PC1=loads[:,1],
         PC2=loads[:,2],
         PC3=loads[:,3])
-    destreg = lm( @formula( PC1 ~ At_Risk_of_Destitution), dall )
-    finreg = lm( @formula( PC1 ~ Satisfied_With_Income), dall )
-    regtable(destreg,finreg;file="tmp/regressions/pca-1.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable())
-    regstr = read("tmp/regressions/pca-1.html", String)
+    depvar = Symbol( "PC1$(extension)")
+    regs = []
+    push!( regs, lm( @eval( @formula( $depvar ~ At_Risk_of_Destitution)), dall ))
+    push!( regs, lm( @eval( @formula( $depvar ~ Satisfied_With_Income)), dall ))
+    for mainvar in MAIN_EXPLANVARS
+        reg = lm( @eval(@formula( $(depvar) ~ 
+            Age + next_election + ethnic_2 + employment_2 + 
+            log(HH_Net_Income_PA) + is_redwall + Gender + 
+            $(mainvar))), dall )
+        push!( regs, reg )
+    end 
+    
+    regtable(
+        regs...;
+        file="tmp/regressions/pca-1$(extension).html",
+        number_regressions=true, 
+        stat_below = false,  
+        below_statistic = PValue, 
+        render=HtmlTable())
+    regstr = read("tmp/regressions/pca-1$(extension).html", String)
 
-    open("tmp/pca.md", "w") do io
+    open("tmp/pca$(extension).md", "w") do io
         println( io, "# Act Now: Initial Principal Component Attempt")
         println( io, "Kaiser-Meyer-Olkin (KMO) test: $kmo\n")
         println(io, pca_text)
-        println(io, "![Scree Plot](img/scree-plot.png)")
+        println(io, "![Scree Plot](img/scree-plot$(extension).png)")
         println(io, "## Loadings\n");
         pretty_table(io, pcf, formatters=( form ), 
                 backend = Val(:markdown))
         for col in PCA_BREAKDOWNS
             s = pretty(string(col))
-            picname = "$(col)-pca"
+            picname = "$(col)$(extension)-pca"
             save( "tmp/img/$(picname).svg", graphs[col])
             save( "tmp/img/$(picname).png", graphs[col])
             println( io, "\n\n## Principal Component Breakdown: by $s\n")
@@ -1287,7 +1317,7 @@ function load_dall_v4()::Tuple
     dall.weight = Weights(dall.weight)
     dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
     # factor cols
-    M, data, prediction = do_basic_pca(dall)
-    dall = hcat( dall, prediction )
-    dall, M
+    M_pre, data_pre, prediction_pre, M_change, data_change, prediction_change = do_basic_pca(dall)
+    dall = hcat( dall, prediction_pre, prediction_change )
+    dall, M_pre, data_pre, prediction_pre, M_change, data_change, prediction_change
 end
