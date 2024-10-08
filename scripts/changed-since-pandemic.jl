@@ -91,6 +91,7 @@ function load_dall_v3()
     dd2.hundreds_post = dd2.basic_income_post .== 100
     dd2.Gender = recode_gender.( dd2.Gender )
     dd2.trust_in_politics = build_trust.( eachrow( dd2 ))
+    dd2.log_income = log.(dd2.HH_Net_Income_PA)
     return dd2
 end
 
