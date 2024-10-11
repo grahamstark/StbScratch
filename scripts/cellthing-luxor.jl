@@ -253,21 +253,33 @@ function bdrange( i :: Int )
     end
 end
 
+function sexsplitter( s :: AbstractString )::Int
+    return if s == "Male" # => :dodgerblue4,
+        1
+    elseif s == "Female" # => :deeppink3,
+        2
+    else
+        rand(1:2)
+    end
+    # "Other" => :grey
+end
+
 function create_crosstab(
     data    :: DataFrame,
     target  :: String,
     breakdown :: Symbol,
-    bd_colours :: Vector{AbstractString},
+    bd_colours :: Vector,
     bd_splitter :: Function )::Tuple
     pol_pre = Symbol("$(target)_pre")
     pol_post = Symbol("$(target)_post")
-    totals = zeros(5,5)
+    nrows = 5; ncols = 5
+    totals = zeros(nrows,ncols)
     breakdowns = fill(([],[]), nrows+1, ncols+1 )
     nlevs = length( bd_colours )
+    println(breakdowns)
     for r in 1:(nrows+1)
         for c in 1:(ncols+1)
-            breakdows[r,c][1] = zeros(nlevs)
-            breakdows[r,c][2] = bd_colours
+            breakdowns[r,c] = ( zeros(nlevs), bd_colours )
         end
     end
     for row in eachrow(data)
@@ -275,7 +287,7 @@ function create_crosstab(
         r = bdrange(row[pol_post])
         totals[r,c] += row.weight
         target = bd_splitter( row[breakdown])
-        breakdowns[r,c][target] += row.weight
+        breakdowns[r,c][1][target] += row.weight
     end
     totals, breakdowns
 end
