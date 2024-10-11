@@ -4,6 +4,7 @@ using Luxor
 using ArgCheck
 using Colors 
 using StatsBase
+using DataFrames
 
 const GAIN_COLOUR = "#d1e7dd"
 const LOSE_COLOUR = "#f8d7da"
@@ -36,7 +37,7 @@ fp(x) = x
 function draw_number_circles( 
     counts::Vector, colours :: Vector, total :: Number )
     sp, colours = sorted_positives( counts, colours )
-    radai = Int.(ceil.(50 .* sqrt.(sp ./ total )))
+    radai = Int.(ceil.(30 .* sqrt.(sp ./ total )))
     n = length(radai)
     t = Table( [50], (2 .* radai ) .+ 10 ) #fill(40,n),  )
     # t = Table( (n, ), (100,100) )
@@ -101,7 +102,7 @@ function draw_crosstab(
                 "<b>$(labels[ar])</b>"
             end 
             settext( s, pos; halign="center", valign="bottom", markup=true ) #table[r,c], 
-            if(r in 2:(nr-1)) && (c in 2:(nc-1))
+            if(r in 2:nr) && (c in 2:nc)
                 pos = table[r,c] - Point( 0, 20 )
                 gsave()
                 translate(pos)
@@ -194,16 +195,41 @@ function testdraw( a :: Matrix )
         setcolor("Grey60")
         setfont(FONT,FONT_SIZE*2)
         settext( "After Treatment", pos; halign="center", valign="bottom", markup=true ) 
-        pos = Point(-730, 200)
+        pos = Point(-720, 200)
         settext( "Before Treatment", pos; angle=90 ) # halign="center", valign="bottom", markup=true ) 
         translate( 780, 0 )
         drawkey(; colours=["red","blue","yellow","orange","black"], labels=["red","blue","yellow","orange","black"])
     end 2000 2000 "xx.svg"
 end
 
+function create_crosstab(
+    data    :: DataFrame,
+    target  :: String,
+    breakdown :: Symbol,
+    bd_colours :: Vector{AbstractString},
+    bd_splitter :: Function )::Tuple
+
+end
+
+function draw_crosstab(
+    percents :: Matrix,
+    cellconts :: Matrix,
+    totals :: Number,
+    labels  :: Vector{AbstractString},
+    colours :: Vector{AbstractString})
+
+end
+
 function testsplits( a :: Matrix, n = 5 )::Matrix
     nrows, ncols = size(a)
-    o = fill(([],[]), nrows, ncols )
+    o = fill(([],[]), nrows+1, ncols+1 )
+    for c in 1:ncols
+        o[nrows+1,c] = splitupcell( sum( a[:,c]), n )
+    end
+    for r in 1:nrows
+        o[r,ncols+1] = splitupcell( sum( a[r,:]), n )
+    end
+    o[nrows+1,ncols+1] = splitupcell( sum( a ), n )
     for r in 1:nrows
         for c in 1:ncols
             o[r,c] = splitupcell( a[r,c], n )
