@@ -202,24 +202,6 @@ function testdraw( a :: Matrix )
     end 2000 2000 "xx.svg"
 end
 
-function create_crosstab(
-    data    :: DataFrame,
-    target  :: String,
-    breakdown :: Symbol,
-    bd_colours :: Vector{AbstractString},
-    bd_splitter :: Function )::Tuple
-
-end
-
-function draw_crosstab(
-    percents :: Matrix,
-    cellconts :: Matrix,
-    totals :: Number,
-    labels  :: Vector{AbstractString},
-    colours :: Vector{AbstractString})
-
-end
-
 function testsplits( a :: Matrix, n = 5 )::Matrix
     nrows, ncols = size(a)
     o = fill(([],[]), nrows+1, ncols+1 )
@@ -255,4 +237,54 @@ function to_pct( a :: Matrix )::Tuple
         o[i] = o[i]*100/t
     end
     return o, t
+end
+
+function bdrange( i :: Int )
+    return if i == 0
+        1
+    elseif i < 30
+        2
+    elseif i < 70
+        3
+    elseif i < 100
+        4
+    else 
+        5
+    end
+end
+
+function create_crosstab(
+    data    :: DataFrame,
+    target  :: String,
+    breakdown :: Symbol,
+    bd_colours :: Vector{AbstractString},
+    bd_splitter :: Function )::Tuple
+    pol_pre = Symbol("$(target)_pre")
+    pol_post = Symbol("$(target)_post")
+    totals = zeros(5,5)
+    breakdowns = fill(([],[]), nrows+1, ncols+1 )
+    nlevs = length( bd_colours )
+    for r in 1:(nrows+1)
+        for c in 1:(ncols+1)
+            breakdows[r,c][1] = zeros(nlevs)
+            breakdows[r,c][2] = bd_colours
+        end
+    end
+    for row in eachrow(data)
+        c = bdrange(row[pol_pre])
+        r = bdrange(row[pol_post])
+        totals[r,c] += row.weight
+        target = bd_splitter( row[breakdown])
+        breakdowns[r,c][target] += row.weight
+    end
+    totals, breakdowns
+end
+
+function draw_crosstab(
+    percents :: Matrix,
+    cellconts :: Matrix,
+    totals :: Number,
+    labels  :: Vector{AbstractString},
+    colours :: Vector{AbstractString})
+
 end
