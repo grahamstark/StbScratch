@@ -22,7 +22,7 @@ function fp(x::AbstractFloat)
     if x ≈ 0
         return ""
     end 
-    Format.format(x,precision=1,commas=false)
+    Format.format(x,precision=2,commas=false)
 end
 
 function fp(x::Number) 
@@ -39,14 +39,17 @@ function draw_number_circles(
     sp, colours = sorted_positives( counts, colours )
     radai = Int.(ceil.(30 .* sqrt.(sp ./ total )))
     n = length(radai)
-    t = Table( [50], (2 .* radai ) .+ 10 ) #fill(40,n),  )
-    # t = Table( (n, ), (100,100) )
-    for i in 1:n
-        setcolor( colours[i])
-        circle(t[1,i], radai[i], action=:fill )
-        # box(t, 1, i, action=:stroke)
+    if n > 0
+        widths = (2 .* radai ) .+ 10
+        println( "widths $widths")
+        t = Table( [50], widths ) #fill(40,n),  )
+        # t = Table( (n, ), (100,100) )
+        for i in 1:n
+            setcolor( colours[i])
+            circle(t[1,i], radai[i], action=:fill )
+            # box(t, 1, i, action=:stroke)
+        end
     end
-    radai
 end
 
 
@@ -288,15 +291,66 @@ function create_crosstab(
         totals[r,c] += row.weight
         target = bd_splitter( row[breakdown])
         breakdowns[r,c][1][target] += row.weight
+        breakdowns[r,ncols+1][1][target] += row.weight
+        breakdowns[nrows+1,c][1][target] += row.weight
     end
-    totals, breakdowns
+    pcts, total = to_pct( totals )
+    totals, breakdowns, pcts, total
 end
 
 function draw_crosstab(
+    filename :: String,
+    title :: String,
     percents :: Matrix,
     cellconts :: Matrix,
-    totals :: Number,
-    labels  :: Vector{AbstractString},
-    colours :: Vector{AbstractString})
-
+    total :: Number,
+    colours :: Vector,
+    labels  :: Vector)
+    pct, tot = to_pct(a)
+    # cellcont = testsplits(a)
+    @svg begin
+        pos = Point( 0,-520)
+        setcolor(HEADER_COLOR)
+        setfont(FONT,FONT_SIZE*3)
+        settext( "$(title) Approval, pre and post argument", pos, halign="center", valign="bottom", markup=true ) 
+        # translate(150, 150)
+        draw_crosstab(
+            percents=percents,
+            total=total,
+            cell_contents=cellconts,
+            labels=CELL_LABELS )
+        pos = Point( 0,-430)
+        setcolor("Grey60")
+        setfont(FONT,FONT_SIZE*2)
+        settext( "After Treatment", pos; halign="center", valign="bottom", markup=true ) 
+        pos = Point(-720, 200)
+        settext( "Before Treatment", pos; angle=90 ) # halign="center", valign="bottom", markup=true ) 
+        translate( 780, 0 )
+        drawkey(; colours=colours, labels=labels)
+    end 2000 2000 filename*".svg"
 end
+
+#=
+io = open( "tmp/links.md", "w")
+for p in POLICIES
+    filename = "img/$(p)-crosstab-by-gender"
+    title = POLICY_LABELS[p]
+    println( io, "![Image of $title]($(filename).svg)\n\n")
+    totals, breakdowns, pcts, total = create_crosstab( 
+        dall, 
+        string(p), 
+        :Gender, 
+        ["dodgerblue4","deeppink3"], 
+        sexsplitter )
+    draw_crosstab( 
+        "tmp/$(filename)", 
+        title, 
+        pcts, 
+        breakdowns, 
+        total, 
+        ["dodgerblue4","deeppink3"], 
+        ["Male", "Female"] )
+end
+close(io)
+=#
+

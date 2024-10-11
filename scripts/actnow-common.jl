@@ -61,6 +61,16 @@ const MAIN_EXPLANDICT = Dict([
 const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 
 const POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
+const POLICY_LABELS = Dict([:basic_income=>"Basic Income", 
+    :green_nd=>"Green New Deal", 
+    :utilities=>"Utilitie", 
+    :health=>"Health", 
+    :childcare=>"Childcare", 
+    :education=>"Education", 
+    :housing=>"Housing", 
+    :transport=>"Transport", 
+    :democracy=>"Democracy", 
+    :tax=>"Taxation"])
 
 const RENAMES_V4 = Dict(
     "Q65.2_1"=>"Support_All_Policies",
