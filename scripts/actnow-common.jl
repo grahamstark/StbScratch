@@ -63,7 +63,7 @@ const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
 const POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
 const POLICY_LABELS = Dict([:basic_income=>"Basic Income", 
     :green_nd=>"Green New Deal", 
-    :utilities=>"Utilitie", 
+    :utilities=>"Utilities", 
     :health=>"Health", 
     :childcare=>"Childcare", 
     :education=>"Education", 
