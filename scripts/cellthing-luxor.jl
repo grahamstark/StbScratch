@@ -6,6 +6,9 @@ using Colors
 using StatsBase
 using DataFrames
 
+import Luxor:Point # disambiguation
+import Luxor:Table
+
 const GAIN_COLOUR = "#d1e7dd"
 const LOSE_COLOUR = "#f8d7da"
 const NC_COLOUR = "#cfe2ff"
@@ -153,6 +156,7 @@ function drawkey(; colours::Vector, labels :: Vector )
     end
 end
 
+#=
 """
 test data WRONG TOO TIRED TO FIX
 """
@@ -223,6 +227,8 @@ function testsplits( a :: Matrix, n = 5 )::Matrix
     return o
 end
 
+=#
+
 function to_pct( a :: Matrix )::Tuple
 @argcheck size(a)[1] == size(a)[2] # square
     nrows,ncols = collect(size( a )) .+= 1
@@ -256,10 +262,10 @@ function bdrange( i :: Int )
     end
 end
 
-function sexsplitter( s :: AbstractString )::Int
-    return if s == "Male" # => :dodgerblue4,
+function gendersplitter( r :: DataFrameRow, target::String )::Int
+    return if r.Gender == "Male" # => :dodgerblue4,
         1
-    elseif s == "Female" # => :deeppink3,
+    elseif r.Gender == "Female" # => :deeppink3,
         2
     else
         rand(1:2)
@@ -267,14 +273,31 @@ function sexsplitter( s :: AbstractString )::Int
     # "Other" => :grey
 end
 
+
+function treatmentsplitter( row :: DataFrameRow, target::String )
+    treatcol = Symbol( "$(target)_which_treat" )
+    s = r[treatcol]
+    v = if s == "relgains" # => "Relative Gains",
+        1 
+    elseif s == "security" # => "Security",
+        2 
+    elseif s == "absgains" # => "Absolute Gains",
+        3 
+    elseif s == "other_argument" # => "Other Argument"])
+        4
+    end
+    @assert v in 1:4 "v=$v s = $s"
+    return v
+end
+
+
 function create_crosstab(
     data    :: DataFrame,
     target  :: String,
-    breakdown :: Symbol,
     bd_colours :: Vector,
     bd_splitter :: Function )::Tuple
-    pol_pre = Symbol("$(target)_pre")
-    pol_post = Symbol("$(target)_post")
+    pol_pre = Symbol("$(target)_post")
+    pol_post = Symbol("$(target)_pre")
     nrows = 5; ncols = 5
     totals = zeros(nrows,ncols)
     breakdowns = fill(([],[]), nrows+1, ncols+1 )
@@ -289,10 +312,11 @@ function create_crosstab(
         c = bdrange(row[pol_pre])
         r = bdrange(row[pol_post])
         totals[r,c] += row.weight
-        target = bd_splitter( row[breakdown])
-        breakdowns[r,c][1][target] += row.weight
-        breakdowns[r,ncols+1][1][target] += row.weight
-        breakdowns[nrows+1,c][1][target] += row.weight
+        breaddown_slot = bd_splitter( row, target )
+        breakdowns[r,c][1][breaddown_slot] += row.weight
+        breakdowns[r,ncols+1][1][breaddown_slot] += row.weight
+        breakdowns[nrows+1,c][1][breaddown_slot] += row.weight
+        breakdowns[nrows+1,ncols+1][1][breaddown_slot] += row.weight
     end
     pcts, total = to_pct( totals )
     totals, breakdowns, pcts, total
@@ -305,8 +329,8 @@ function draw_crosstab(
     cellconts :: Matrix,
     total :: Number,
     colours :: Vector,
-    labels  :: Vector)
-    pct, tot = to_pct(a)
+    labels  :: Vector )
+    # pct, tot = to_pct(a)
     # cellcont = testsplits(a)
     @svg begin
         pos = Point( 0,-520)
@@ -327,30 +351,52 @@ function draw_crosstab(
         settext( "Before Treatment", pos; angle=90 ) # halign="center", valign="bottom", markup=true ) 
         translate( 780, 0 )
         drawkey(; colours=colours, labels=labels)
-    end 2000 2000 filename*".svg"
+    end 2000 2000 "$(filename).svg"
 end
 
-#=
-io = open( "tmp/links.md", "w")
-for p in POLICIES
-    filename = "img/$(p)-crosstab-by-gender"
-    title = POLICY_LABELS[p]
-    println( io, "![Image of $title]($(filename).svg)\n\n")
-    totals, breakdowns, pcts, total = create_crosstab( 
-        dall, 
-        string(p), 
-        :Gender, 
-        ["dodgerblue4","deeppink3"], 
-        sexsplitter )
-    draw_crosstab( 
-        "tmp/$(filename)", 
-        title, 
-        pcts, 
-        breakdowns, 
-        total, 
-        ["dodgerblue4","deeppink3"], 
-        ["Male", "Female"] )
+"""
+Writes images of each crosstab to img/[policyname]-by-gender
+filename - index file for all the links to images
+dall - one of w4 or w3 processed datasets (see metaload for steps)
+TODO: more breakdowns - switch .png .svg
+"""
+function do_all( 
+    filename:: String, 
+    dall::DataFrame )
+    io = open( "tmp/$filename.md", "w")
+    for i in 1:2
+        colours, labels, splitter, bdname = 
+            if i == 1
+                ["dodgerblue4","deeppink3"],
+                ["Male", "Female"],
+                gendersplitter,
+                "gender"
+            elseif i == 2
+                ["dodgerblue4","deeppink3"],
+                ["Male", "Female"],
+                gendersplitter,
+                "gender"
+            end
+        for p in POLICIES
+            filename = "img/$(p)-crosstab-by-$bdname"
+            title = POLICY_LABELS[p]
+            println( io, "![Image of $title]($(filename).svg)\n\n")
+            totals, breakdowns, pcts, total = create_crosstab( 
+                dall, 
+                string(p), 
+                colours, 
+                splitter )
+            println( breakdowns[end,end] )
+            draw_crosstab( 
+                "tmp/$(filename)", 
+                title, 
+                pcts, 
+                breakdowns, 
+                total, 
+                colours, 
+                labels  )
+        end
+    end # loop
+    close(io)
 end
-close(io)
-=#
 

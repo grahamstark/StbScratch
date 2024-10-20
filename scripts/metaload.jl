@@ -2,6 +2,7 @@ using Revise
 include( "scripts/actnow-common.jl")
 include( "scripts/redwall.jl")
 include("scripts/changed-since-pandemic.jl")
+include("scripts/cellthing-luxor.jl")
 
 
 
