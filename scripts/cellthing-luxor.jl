@@ -15,8 +15,8 @@ const NC_COLOUR = "#cfe2ff"
 const TOTALS_COLOUR = "#cff4fc"
 const BORDER_COLOUR = "#dee2e6"
 const HEADER_COLOR = "#b63b5e"
-const FONT = "Azo Sans"
-const FONT_SIZE = 15
+const FONT = "BellCentennial LT Address" #"Azo Sans"
+const FONT_SIZE = 16
 const CELL_LABELS = ["Completely Disagree", "Mostly Disagree", "Mostly Neutral", "Mostly Agree", "Completely Agree", "TOTALS"]
 const ALL_COLOURS = distinguishable_colors(50)[3:end] # sort(collect(Colors.color_names))
 const CELL_SIZE = (200,150)
@@ -65,6 +65,7 @@ function draw_crosstab(
     nr, nc = collect(size(percents)) .+ 1
     table = Table( (nr,nc), CELL_SIZE )
     setfont(FONT, FONT_SIZE )
+    
     for r in 1:nr
         for c in 1:nc          
             colour = 
@@ -91,22 +92,27 @@ function draw_crosstab(
             ar = r - 1
             ac = c - 1
             pos = table[r,c]
-            s = if ar > 0 && ac > 0
+            s,fontsize = if ar > 0 && ac > 0
                 ns = fp(percents[ar,ac])
                 pos += Point( 0, 40 )
                 if r == nr || c == nc # row/col tots bold
                     ns = "<b>$ns</b>"
                 end
-                ns
+                ns,
+                FONT_SIZE*1.2
             elseif ac == 0 && ar == 0
-                ""
+                "",
+                FONT_SIZE
             elseif ar == 0
                 pos += Point(0,60)
-                "<b>$(labels[ac])</b>"
+                "<b>$(labels[ac])</b>",
+                FONT_SIZE
             elseif ac == 0
                 # pos += Point(60,0)
-                "<b>$(labels[ar])</b>"
+                "<b>$(labels[ar])</b>",
+                FONT_SIZE
             end 
+            setfont(FONT, fontsize )
             settext( s, pos; halign="center", valign="bottom", markup=true ) #table[r,c], 
             if(r in 2:nr) && (c in 2:nc)
                 pos = table[r,c] - Point( 0, 20 )
@@ -145,6 +151,7 @@ function drawkey(; colours::Vector, labels :: Vector )
     # setfont(FONT,12)
     # setcolor( "black")
     # settext( "Key", Point(10,-60))
+    setfont(FONT, FONT_SIZE )
     n = length(labels)
     t = Table(fill(40,n), [25,80])
     println( size(t))
@@ -152,7 +159,7 @@ function drawkey(; colours::Vector, labels :: Vector )
         setcolor( colours[i])
         circle(t[i,1], 7; action=:fill)
         setcolor( "black")
-        settext( labels[i], t[i,2]-Point(-10,0); valign="center")
+        settext( labels[i], t[i,2]-Point(-5,0); valign="center")
     end
 end
 
@@ -274,7 +281,7 @@ function gendersplitter( r :: DataFrameRow, target::String )::Int
 end
 
 
-function treatmentsplitter( row :: DataFrameRow, target::String )
+function treatmentsplitter( r :: DataFrameRow, target::String )::Int
     treatcol = Symbol( "$(target)_which_treat" )
     s = r[treatcol]
     v = if s == "relgains" # => "Relative Gains",
@@ -333,10 +340,10 @@ function draw_crosstab(
     # pct, tot = to_pct(a)
     # cellcont = testsplits(a)
     @svg begin
-        pos = Point( 0,-520)
+        pos = Point( 0,-560)
         setcolor(HEADER_COLOR)
-        setfont(FONT,FONT_SIZE*3)
-        settext( "$(title) Approval, pre and post argument", pos, halign="center", valign="bottom", markup=true ) 
+        setfont(FONT,FONT_SIZE*2.5)
+        settext( "$(title) Approval, Pre- and Post- Argument", pos, halign="center", valign="bottom", markup=true ) 
         # translate(150, 150)
         draw_crosstab(
             percents=percents,
@@ -372,10 +379,10 @@ function do_all(
                 gendersplitter,
                 "gender"
             elseif i == 2
-                ["dodgerblue4","deeppink3"],
-                ["Male", "Female"],
-                gendersplitter,
-                "gender"
+                ["blue","green","yellow","red"],
+                ["Relative Gains","Security", "Absolute Gains","Other Argument"],
+                treatmentsplitter,
+                "treatment"
             end
         for p in POLICIES
             filename = "img/$(p)-crosstab-by-$bdname"
