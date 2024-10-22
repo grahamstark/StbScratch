@@ -187,7 +187,26 @@ function make_dataset_v4()::DataFrame
     dall.phq_8 = health_score.(eachrow(dall), PHQ_8...)
     dall.sqrt_gad_7 = sqrt.(dall.gad_7)
     dall.sqrt_phq_8 = sqrt.(dall.phq_8)
-    
+
+    #
+    # numeric analogs of catalogs for SEM models
+    #
+    dall.i_Gender = if dall.Gender == "Male"
+        1
+    elseif dall.Gender == "Female"
+        2
+    else 
+        rand(1:2)
+    end
+
+    dall.i_Politicians_All_The_Same = extract_number( dall.Politicians_All_The_Same ) + 1 # extract subtracys one ..
+    dall.i_Politics_Force_For_Good = extract_number( dall.Politics_Force_For_Good ) + 1
+    dall.i_Party_In_Government_Doesnt_Matter = extract_number( dall.Party_In_Government_Doesnt_Matter ) + 1
+    dall.i_Politicians_Dont_Care = extract_number( dall.Politicians_Dont_Care ) + 1
+    dall.i_Politicians_Want_To_Make_Things_Better = extract_number( dall.Politicians_Want_To_Make_Things_Better ) + 1
+    dall.i_Shouldnt_Rely_On_Government = extract_number( dall.Shouldnt_Rely_On_Government ) + 1
+    dall.i_Satisfied_With_Income = extract_number( dall.Satisfied_With_Income )  + 1
+    dall.i_Managing_Financially = extract_number( dall.Managing_Financially ) + 1
     #
     # Dump modified data
     #

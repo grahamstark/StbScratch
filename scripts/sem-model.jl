@@ -12,26 +12,11 @@
 # 
 include( "actnow-common.jl")
 
-#
-# Functions to convert strings like # 5. Strongly agree" and so on - extract the '5'
-#
-function extract_number( s :: AbstractString )::Int
-    pm = r"([0-9])\.(.*)" 
-    # score each 0..4 
-    m = match( pm, s )
-    tl = parse(Int, m[1])-1
-    return tl
-end
-
-function extract_number( x :: Number )::Number
-    x
-end
-
 const faith_in_government_vars = [
-    :Politicians_All_The_Same, :Politics_Force_For_Good, :Party_In_Government_Doesnt_Matter,
-    :Politicians_Dont_Care, :Politicians_Want_To_Make_Things_Better, :Shouldnt_Rely_On_Government ]
+    :i_Politicians_All_The_Same, :i_Politics_Force_For_Good, :i_Party_In_Government_Doesnt_Matter,
+    :i_Politicians_Dont_Care, :i_Politicians_Want_To_Make_Things_Better, :i_Shouldnt_Rely_On_Government ]
     # LogIncomeEquivalised + LadderSES + Satisfactionincome + Managingfinancially
-const social_position_vars = [:log_income, :Ladder, :Satisfied_With_Income, :Managing_Financially]
+const social_position_vars = [:log_income, :Ladder, :i_Satisfied_With_Income, :i_Managing_Financially]
     #  PHQs + GADs + Control
 const distress_vars = [:gad_7, :phq_8, :In_Control_Of_Life]
 const sqrt_distress_vars = [:sqrt_gad_7, :sqrt_phq_8, :In_Control_Of_Life]
@@ -150,20 +135,6 @@ function do_one_years_SEMS( dall :: DataFrame )
 
 end
 
-
-function map_Managing_Financially( s :: AbstractString ) :: Int 
-    return if s == "Doing alright"
-        2
-    elseif s == "Finding it quite difficult"
-        5
-    elseif s == "Finding it very difficult"
-        4
-    elseif s == "Just about getting by"
-        3
-    elseif s == "Living comfortably"
-        1
-    end
-end
 
 function do_all_sems()
     dall3 = load_dall_v3()

@@ -587,3 +587,32 @@ function recode_gender( gender :: AbstractString )::String
     # println("recode gender $gender")
     return gender in ["Male","Female"] ? gender : "Other"
 end
+
+function map_Managing_Financially( s :: AbstractString ) :: Int 
+    return if s == "Doing alright"
+        2
+    elseif s == "Finding it quite difficult"
+        5
+    elseif s == "Finding it very difficult"
+        4
+    elseif s == "Just about getting by"
+        3
+    elseif s == "Living comfortably"
+        1
+    end
+end
+
+#
+# Functions to convert strings like # 5. Strongly agree" and so on - extract the '5'
+#
+function extract_number( s :: AbstractString )::Int
+    pm = r"([0-9])\.(.*)" 
+    # score each 0..4 
+    m = match( pm, s )
+    tl = parse(Int, m[1])-1
+    return tl
+end
+
+function extract_number( x :: Number )::Number
+    x
+end

@@ -367,9 +367,7 @@ filename - index file for all the links to images
 dall - one of w4 or w3 processed datasets (see metaload for steps)
 TODO: more breakdowns - switch .png .svg
 """
-function do_all( 
-    filename:: String, 
-    dall::DataFrame )
+function do_all( filename:: String, dall::DataFrame )
     io = open( "tmp/$filename.md", "w")
     for i in 1:2
         colours, labels, splitter, bdname = 
@@ -383,6 +381,8 @@ function do_all(
                 ["Relative Gains","Security", "Absolute Gains","Other Argument"],
                 treatmentsplitter,
                 "treatment"
+            elseif i == 3
+
             end
         for p in POLICIES
             filename = "img/$(p)-crosstab-by-$bdname"
