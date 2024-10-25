@@ -69,13 +69,24 @@ abbrevs <- c(
         Satisf_Income  = "i_Satisfied_With_Income" ,
         Mang_Financial = "i_Managing_Financially",
         In_Control = "In_Control_Of_Life",
-        BI_Support = "basic_income_post" )
+        BI = "basic_income_pre",
+        Green_ND_Support="green_nd_pre", 
+        Utilities="utilities_pre", 
+        Health="health_pre", 
+        Childcare="childcare_pre", 
+        Education="education_pre", 
+        Housing="housing_pre", 
+        Transport="transport_pre", 
+        Democract="democracy_pre", 
+        Tax="tax_pre" )
 
 dall4 <- dall4 |> rename(all_of(abbrevs))
 
 # MUST BE in this order. Doesn't actually need to be
 # a dict - only values needed,
-daniels_model_1_graph_renames = c(
+
+
+daniels_model_1_graph_renames = list(
         "Pols_All_Same" = "Pols All Same",
         "Pol_For_Good" = "Pols Force For Good",
         "Gov_Not_Matter" = "Party In Govt Irrel.",
@@ -95,12 +106,31 @@ daniels_model_1_graph_renames = c(
         "soc_pos" = "Social Pos",
         "distress" = "Distress")
 
+daniels_model_1_graph_renames = c(
+        "Pols All Same",
+        "Pols Force For Good",
+        "Party In Govt Irrel.",
+        "Pols Don't Care",
+        "Pols Improve Things",
+        "Shouldn't Rely On Govt",
+        "Log(Income)",
+        "Ladder",
+        "Satisf W. Income",
+        "Manag Financial",
+        "Support UBI",
+        "Age",
+        "sqrt(GAD-7)",
+        "sqrt(PHQ-8)",
+        "Control of Life",
+        "Faith In Govt",
+        "Social Pos",
+        "Distress")
 
-daniels_model_1 <- '
+daniels_model_template <- '
     # latent
     
     faith_gov =~
-         Pols_All_Same + Pol_For_Good + 
+        Pols_All_Same + Pol_For_Good + 
         Gov_Not_Matter +
         Pol_Not_Care + Pol_Want_Improve +
         Pol_Not_rely
@@ -110,7 +140,7 @@ daniels_model_1 <- '
     # latent regressions
     faith_gov ~ soc_pos
     distress ~ soc_pos
-    BI_Support ~ soc_pos + faith_gov + distress + Age
+    {policy} ~ soc_pos + faith_gov + distress + Age
 
     # variances
     # faith_gov ~~ faith_gov 
@@ -129,6 +159,11 @@ simple_model <- '
     BI_Support ~ soc_pos + Age
     soc_pos ~~ Age   
 '
+
+policy = 'BI_Support'
+policy_label = "BI Support"
+
+daniels_model_1 = glue( daniels_model_template )
 
 daniels_model_1_fit <- sem( daniels_model_1, data=dall4 ) #, se='boot', bootstrap=1000 )
 summary( daniels_model_1_fit, standardized=T )
@@ -153,6 +188,16 @@ semPaths(
     nodeLabels = daniels_model_1_graph_renames )
 
 
+semPaths( 
+    daniels_model_1_fit, 
+    "std", 
+    # filetype="pdf",
+    # filename="tmp/img/daniels_model_1",
+    layout="tree", 
+    rotation=4,
+    nodeLabels = daniels_model_1_graph_renames )
+
+
 
 semPaths( 
     daniels_model_1_fit, 
@@ -166,5 +211,79 @@ semPaths(
     nodeLabels = daniels_model_1_graph_renames, 
     residuals=FALSE )
 
+model_template <- '
+    # latent
+    
+    faith_gov =~
+        Pols_All_Same + Pol_For_Good + 
+        Gov_Not_Matter +
+        Pol_Not_Care + Pol_Want_Improve +
+        Pol_Not_rely
+    soc_pos =~ log_income + Ladder + Satisf_Income + Mang_Financial
+    distress =~ sqrt_gad_7 + sqrt_phq_8 + In_Control
 
+    # latent regressions
+    faith_gov ~ soc_pos
+    distress ~ soc_pos
+    {policy} ~ soc_pos + faith_gov + distress + Age
+
+    # variances
+    # faith_gov ~~ faith_gov 
+    # distress ~~ distress 
+    # soc_pos ~~ soc_pos
+
+    # covariances
+    faith_gov ~~ distress
+    distress ~~ Age
+    faith_gov ~~ Age
+    soc_pos ~~ Age
+'
+    semPaths( 
+        daniels_model_1_fit, 
+        "std", 
+        filetype="pdf",
+        filename="tmp/img/daniels_model_1",
+        layout="tree", 
+        rotation=4,
+        nodeLabels = daniels_model_1_graph_renames )
+
+
+POLICY_LABELS = list(
+    BI="Basic Income",
+    Green_ND="Green New Deal",
+    Utilities="Utilities",
+    Health="health" ="Health",
+    Childcare= "Childcare",
+    Education = "Education",
+    Housing = "Housing",
+    Transport ="Transport",
+    Democracy ="Democracy",
+    Tax = "Taxation" )
+
+
+# `dall` - dataset 
+# `policy` - label of the policy in the dataset
+# `pollabel` - same as a text string, for the graph
+#
+do_one_policy <- function( dall, policy, pollabel ){
+    fname = glue::glue("tmp/sem-model-{policy}.txt")
+    gfname = glue::glue("tmp/img/sem-model-{policy}")
+    sink( fname ) 
+    model_str = glue::glue( model_template )
+    # these dump model as a string to the sink
+    "Estimated Model Is"
+    model_str
+    model_fit <- sem( model_str, data=dall ) #, se='boot', bootstrap=1000 )
+    summary( model_fit, standardized=T )
+    daniels_model_1_graph_renames[11] = pollabel 
+    semPaths( 
+        model_fit, 
+        "std", 
+        filetype="pdf",
+        filename=gfname,
+        layout="tree", 
+        rotation=4,
+        nodeLabels = daniels_model_1_graph_renames )
+    sink()
+}
 
