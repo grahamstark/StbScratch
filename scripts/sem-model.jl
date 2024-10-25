@@ -29,6 +29,7 @@ const latent_vars = [:faith_in_government, :distress, :social_position ]
 
 function do_one_years_SEMS( dall :: DataFrame )
     println( "making graph1")
+    #=
     actgraph1 = @StenoGraph begin
 
         # loadings
@@ -44,6 +45,32 @@ function do_one_years_SEMS( dall :: DataFrame )
         # variances
         _(observed_vars1) ↔ _(observed_vars1)
         _(latent_vars) ↔ _(latent_vars)
+
+        # covariances
+        faith_in_government ↔ distress
+        distress ↔ Age
+        faith_in_government ↔ Age
+        social_position ↔ Age
+
+    end
+    =#
+
+    actgraph1 = @StenoGraph begin
+
+        # loadings
+        faith_in_government → fixed(1)*i_Politicians_All_The_Same + i_Politics_Force_For_Good + i_Party_In_Government_Doesnt_Matter +
+            i_Politicians_Dont_Care + i_Politicians_Want_To_Make_Things_Better + i_Shouldnt_Rely_On_Government
+        social_position → fixed(1)*log_income + Ladder + i_Satisfied_With_Income + i_Managing_Financially
+        distress → fixed(1)*gad_7 + phq_8 + In_Control_Of_Life
+
+        # latent regressions
+        faith_in_government → social_position
+        distress → social_position
+        basic_income_post → social_position + faith_in_government + distress + Age
+
+        # variances
+        # _(observed_vars1) ↔ _(observed_vars1)
+        # _(latent_vars) ↔ _(latent_vars)
 
         # covariances
         faith_in_government ↔ distress
@@ -95,10 +122,11 @@ function do_one_years_SEMS( dall :: DataFrame )
     model1 = Sem(
             specification = partable1,
             data = dall,
+            
             imply = RAMSymbolic, 
-            loss = SemWLS,
+            # loss = SemWLS,
             optimizer = SemOptimizerNLopt )
-
+    
     println( "making fit1")
     model_fit1 = sem_fit(model1)
 

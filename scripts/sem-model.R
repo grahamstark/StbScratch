@@ -57,39 +57,114 @@ glimpse(dall3)
 
 # fit <- cfa( model=mymodel, data=dall4 )
 
-daniels_model <- '
+# rename variables so they display better
+
+abbrevs <- c( 
+        Pols_All_Same = "i_Politicians_All_The_Same",
+        Pol_For_Good = "i_Politics_Force_For_Good",
+        Gov_Not_Matter = "i_Party_In_Government_Doesnt_Matter",
+        Pol_Not_Care = "i_Politicians_Dont_Care",
+        Pol_Want_Improve = "i_Politicians_Want_To_Make_Things_Better",
+        Pol_Not_rely = "i_Shouldnt_Rely_On_Government",
+        Satisf_Income  = "i_Satisfied_With_Income" ,
+        Mang_Financial = "i_Managing_Financially",
+        In_Control = "In_Control_Of_Life",
+        BI_Support = "basic_income_post" )
+
+dall4 <- dall4 |> rename(all_of(abbrevs))
+
+# MUST BE in this order. Doesn't actually need to be
+# a dict - only values needed,
+daniels_model_1_graph_renames = c(
+        "Pols_All_Same" = "Pols All Same",
+        "Pol_For_Good" = "Pols Force For Good",
+        "Gov_Not_Matter" = "Party In Govt Irrel.",
+        "Pol_Not_Care" = "Pols Don't Care",
+        "Pol_Want_Improve" = "Pols Improve Things",
+        "Pol_Not_rely" = "Shouldn't Rely On Govt",
+        "log_income" = "Log(Income)",
+        "Ladder" = "Ladder",
+        "Satisf_Income" = "Satisf W. Income" ,
+        "Mang_Financial" = "Manag Financial",
+        "BI_Support" = "Support UBI",
+        "Age" = "Age",
+        "sqrt_gad_7" = "sqrt(GAD-7)",
+        "sqrt_phq_8" = "sqrt(PHQ-8)",
+        "In_Control" = "Control of Life",
+        "faith_gov" = "Faith In Govt",        
+        "soc_pos" = "Social Pos",
+        "distress" = "Distress")
+
+
+daniels_model_1 <- '
     # latent
     
-    faith_in_government =~     
-        i_Politicians_All_The_Same + i_Politics_Force_For_Good + 
-        i_Party_In_Government_Doesnt_Matter +
-        i_Politicians_Dont_Care + i_Politicians_Want_To_Make_Things_Better +
-        i_Shouldnt_Rely_On_Government
-    social_position =~ log_income + Ladder + i_Satisfied_With_Income + i_Managing_Financially
-    distress =~ sqrt_gad_7 + sqrt_phq_8 + In_Control_Of_Life
+    faith_gov =~
+         Pols_All_Same + Pol_For_Good + 
+        Gov_Not_Matter +
+        Pol_Not_Care + Pol_Want_Improve +
+        Pol_Not_rely
+    soc_pos =~ log_income + Ladder + Satisf_Income + Mang_Financial
+    distress =~ sqrt_gad_7 + sqrt_phq_8 + In_Control
 
     # latent regressions
-    faith_in_government ~ social_position
-    distress ~ social_position
-    basic_income_post ~ social_position + faith_in_government + distress + Age
+    faith_gov ~ soc_pos
+    distress ~ soc_pos
+    BI_Support ~ soc_pos + faith_gov + distress + Age
 
     # variances
-    # faith_in_government ~~ faith_in_government 
+    # faith_gov ~~ faith_gov 
     # distress ~~ distress 
-    # social_position ~~ social_position
+    # soc_pos ~~ soc_pos
 
     # covariances
-    faith_in_government ~~ distress
+    faith_gov ~~ distress
     distress ~~ Age
-    faith_in_government ~~ Age
-    social_position ~~ Age
-
+    faith_gov ~~ Age
+    soc_pos ~~ Age
 '
 
-dans_fit <- sem( daniels_model, data=dall4 )
-summary( dans_fit )
-ss <- semPlotModel( daniels_model, standardized=T, fit.measures=T )
+simple_model <- '
+    soc_pos =~ log_income + Ladder + Satisf_Income + Mang_Financial
+    BI_Support ~ soc_pos + Age
+    soc_pos ~~ Age   
+'
+
+daniels_model_1_fit <- sem( daniels_model_1, data=dall4 ) #, se='boot', bootstrap=1000 )
+summary( daniels_model_1_fit, standardized=T )
+parameterEstimates(daniels_model_1_fit)
+simple_model_fit <- sem( simple_model, data=dall4 )
+summary( simple_model_fit )
+
+# ss <- semPlotModel( daniels_model, standardized=T, fit.measures=T )
 # pdf( "daniels_model.pdf", width=15, height=5)
-semSyntax(ss, syntax = "lavaan", allFixed = FALSE, "ss.pdf")
+# semSyntax(ss, syntax = "lavaan", allFixed = FALSE, "ss.pdf")
 # dev.off()
+
+semPaths( simple_model_fit )
+
+semPaths( 
+    daniels_model_1_fit, 
+    "std", 
+    filetype="pdf",
+    filename="tmp/img/daniels_model_1",
+    layout="tree", 
+    rotation=4,
+    nodeLabels = daniels_model_1_graph_renames )
+
+
+
+semPaths( 
+    daniels_model_1_fit, 
+    what="std",
+    # whatLabels="std",
+    # edge.label.cex=1.3, 
+    filetype="pdf",
+    filename="tmp/img/daniels_model_1",
+    # layout="tree", 
+    # rotation=4,
+    nodeLabels = daniels_model_1_graph_renames, 
+    residuals=FALSE )
+
+
 

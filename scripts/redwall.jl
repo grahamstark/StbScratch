@@ -1337,6 +1337,6 @@ function load_dall_v4()::Tuple
     dall.probability_weight = ProbabilityWeights(dall.weight./sum(dall.weight))
     # factor cols
     M_pre, data_pre, prediction_pre, M_change, data_change, prediction_change = do_basic_pca(dall)
-    dall = hcat( dall, prediction_pre, prediction_change )
+    dall = hcat( dall, prediction_pre, prediction_change; makeunique=true )
     dall, M_pre, data_pre, prediction_pre, M_change, data_change, prediction_change
 end
