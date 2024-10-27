@@ -241,7 +241,9 @@ function lpretty( s :: Symbol ) :: String
 end
 
     
-const SUMMARY_VARS = ["Age",
+const SUMMARY_VARS = [
+    "Any_Argument",
+    "Age",
     "Gender",
     # "Gender_Other",
     "Ethnic",

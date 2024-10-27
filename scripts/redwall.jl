@@ -235,6 +235,7 @@ function make_labels()::Dict{String,String}
         d["$(policy)_treat_absgains"] = "Shown Absolute Gains Argument"
         d["$(policy)_treat_other_argument"] = "Shown Flourishing Argument"
     end
+    d["Any_Argument"] = "Influenced by any Argument (Q65.3)"
     d["Age"] = "Age (Q66.2)"
     d["Gender"] = "Gender (Q66.3)"
     d["is_redwall"] = "From Redwall Constituency"

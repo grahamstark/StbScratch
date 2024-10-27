@@ -112,7 +112,6 @@ function joinv3v4( dall3::DataFrame, dall4::DataFrame)::Tuple
     dall4.lovers_post = dall4.basic_income_post .> 70
     dall4.zeros_post = dall4.basic_income_post .== 0
     dall4.hundreds_post = dall4.basic_income_post .== 100
-
     dc3 = deepcopy(dall3)
     dc4 = deepcopy(dall4)
     dc3 = dc3[dc3.Finished,:] # 24 examples of not finished
@@ -178,9 +177,6 @@ function joinv3v4( dall3::DataFrame, dall4::DataFrame)::Tuple
     @assert size(joined)[1]*2 == size(stacked)[1] "n joined= $(size(joined)[1]*2); n stacked= $(size(stacked)[1])"
     joined, stacked, toskip_logs
 end
-
-
-  
 
 function pre_post_scatter( 
     joined :: DataFrame,

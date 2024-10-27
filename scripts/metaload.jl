@@ -11,6 +11,11 @@ dall4, M_pre, data_pre, prediction_pre, M_change, data_change, prediction_change
 dall3 = load_dall_v3()
 joined, stacked, skips = joinv3v4( dall3, dall4 )
 
+dall4.in_both_waves = Bool.(coalesce.( in.(dall4.PROLIFIC_PID, ( joinpids, )), 0 ))
+
+CSV.write( "$(DATA_DIR)/v3_v4_joined.tab", joined; delim='\t' )
+CSV.write( "$(DATA_DIR)/v3_v4_stacked.tab", stacked; delim='\t' )
+CSV.write( "$(DATA_DIR)/national-w-created-vars.tab", dall4; delim='\t'  )
 summaries, counts_joined, counts_all = analyse(joined, dall3, dall4 )
 # regs = do_mixed_regressons( stacked )
 

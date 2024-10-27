@@ -37,7 +37,7 @@ ABBREVS <- c(
         Transport="transport_pre", 
         Democracy="democracy_pre", 
         Tax="tax_pre",
-        Overall="Support_All_Policies" )
+        Overall="overall_pre" ) #!!! Careful - this may be renamed tp "Support_All_Policies"
 
 # rename the boxes in the graphs to these
 # MUST BE in this order. 
@@ -107,16 +107,24 @@ POLICY_LABELS = list(
 # `policy` - label of the policy in the dataset
 # `pollabel` - same as a text string, for the graph
 #
-do_one_policy <- function( dall, policy, pollabel ){
-    fname = glue::glue("tmp/sem-model-{policy}.txt")
-    gfname = glue::glue("tmp/img/sem-model-{policy}")
+do_one_policy <- function( dall, policy, pollabel, short_or_full ){
+    fname = glue::glue("tmp/sem-model-{policy}-{short_or_full}.txt")
+    gfname = glue::glue("tmp/img/sem-model-{policy}-{short_or_full}")
     sink( fname ) 
+    if( short_or_full == 'full'){
+        cat( "\n# FULL SAMPLE\n\n")
+    } else {
+        cat( "\n# SUBSET IN BOTH Wave 3 & Wave 4\n\n")
+    }
     model_str = glue::glue( MODEL_TEMPLATE )
     # these dump model as a string to the sink
-    "Estimated Model Is"
-    model_str
+    cat("Model is:\n\n" )
+    print(model_str)
     model_fit <- sem( model_str, data=dall ) #, se='boot', bootstrap=1000 )
+    cat("\n\n## MAIN RESULTS\n\n")
     summary( model_fit, standardized=T )
+    cat( "## FIT MEASURES\n\n")
+    print(fitmeasures( model_fit ))
     MODEL_GRAPH_RENAMES[11] = pollabel 
     semPaths( 
         model_fit, 
@@ -131,11 +139,15 @@ do_one_policy <- function( dall, policy, pollabel ){
 
 
 dall4 <- read.delim("data/national-w-created-vars.tab") |> tibble()
+# FIXME cast "false"/"true" as bools
 # shorten names for SEM printouts
 dall4 <- dall4 |> rename(all_of(ABBREVS))
 glimpse(dall4)
 
+# this is the both samples subset
+dall4subset <- dall4 |> filter( in_both_waves == "true" )
 
 for (l in names(POLICY_LABELS)){
-    do_one_policy( dall4, l, POLICY_LABELS[l] )
+    do_one_policy( dall4, l, POLICY_LABELS[l], "full" )
+    do_one_policy( dall4subset, l, POLICY_LABELS[l], "subset" )
 }
