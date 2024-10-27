@@ -73,7 +73,7 @@ const POLICY_LABELS = Dict([:basic_income=>"Basic Income",
     :tax=>"Taxation"])
 
 const RENAMES_V4 = Dict(
-    "Q65.2_1"=>"Support_All_Policies",
+    "Q65.2_1"=>"overall_post",
     "Q65.3_1"=>"Any_Argument",
     "Q66.2"=>"Age",
     "Q66.3"=>"Gender",
@@ -283,10 +283,7 @@ const SUMMARY_VARS = ["Age",
     "Shouldnt_Rely_On_Government",
     "trust_in_politics",
     "gad_7",
-    "phq_8",
-    "PC1",
-    "PC2",
-    "PC3"
+    "phq_8"
     # "Change_in_circumstance"
     ]
 

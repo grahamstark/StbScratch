@@ -1,8 +1,8 @@
 using Revise
-include( "scripts/actnow-common.jl")
-include( "scripts/redwall.jl")
-include("scripts/changed-since-pandemic.jl")
-include("scripts/cellthing-luxor.jl")
+includet( "scripts/actnow-common.jl")
+includet( "scripts/redwall.jl")
+includet("scripts/changed-since-pandemic.jl")
+includet("scripts/cellthing-luxor.jl")
 
 
 

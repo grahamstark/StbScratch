@@ -124,6 +124,16 @@ function PValue(rr::RegressionModel, k::Int; vargs...)
     PValue(RegressionTables._pvalue(rr)[k])
 end
 
+function g2i( Gender )
+    return if Gender .== "Male"
+        1
+    elseif Gender .== "Female"
+        2
+    else 
+        rand(1:2)
+    end
+end
+
 """
 Initial load and construction of v4 dataset.
 """
@@ -152,7 +162,7 @@ function make_dataset_v4()::DataFrame
     create_one!( dall; label="transport", initialq="Q47.1_4", finalq="Q52.1_4", treatqs=["Q48.1_4","Q49.1_4","Q50.1_4","Q51.1_4"])
     create_one!( dall; label="democracy", initialq="Q53.1_4", finalq="Q58.1_4", treatqs=["Q54.1_4","Q55.1_4","Q56.1_4","Q57.1_4"])
     create_one!( dall; label="tax", initialq="Q59.1_4", finalq="Q64.1_4", treatqs=["Q60.1_4","Q61.1_4","Q62.1_4","Q63.1_4"])
-
+    
     rename!( dall, RENAMES_V4 )
     # dall = dall[dall.HH_Net_income_PA .> 0,:] # skip zeto incomes 
     dall = dall[(.! ismissing.(dall.HH_Net_Income_PA )) .& (dall.HH_Net_Income_PA .> 0),:]
@@ -173,7 +183,8 @@ function make_dataset_v4()::DataFrame
     dall.trust_in_politics = build_trust.( eachrow( dall ))
     dall.Owner_Occupier= convert.(String,dall.Owner_Occupier)
     dall.General_Health= convert.(String,dall.General_Health)
-
+    
+    
     dall.Little_interest_in_things = convert.(String,dall.Little_interest_in_things )
     dall.age5 = dall.Age .÷ 5
     dall.poorhealth = dall.General_Health .∈ (["Bad","Very bad"],)
@@ -191,22 +202,19 @@ function make_dataset_v4()::DataFrame
     #
     # numeric analogs of catalogs for SEM models
     #
-    dall.i_Gender = if dall.Gender == "Male"
-        1
-    elseif dall.Gender == "Female"
-        2
-    else 
-        rand(1:2)
-    end
+    dall.i_Gender = g2i.( dall.Gender ) 
 
-    dall.i_Politicians_All_The_Same = extract_number( dall.Politicians_All_The_Same ) + 1 # extract subtracys one ..
-    dall.i_Politics_Force_For_Good = extract_number( dall.Politics_Force_For_Good ) + 1
-    dall.i_Party_In_Government_Doesnt_Matter = extract_number( dall.Party_In_Government_Doesnt_Matter ) + 1
-    dall.i_Politicians_Dont_Care = extract_number( dall.Politicians_Dont_Care ) + 1
-    dall.i_Politicians_Want_To_Make_Things_Better = extract_number( dall.Politicians_Want_To_Make_Things_Better ) + 1
-    dall.i_Shouldnt_Rely_On_Government = extract_number( dall.Shouldnt_Rely_On_Government ) + 1
-    dall.i_Satisfied_With_Income = extract_number( dall.Satisfied_With_Income )  + 1
-    dall.i_Managing_Financially = extract_number( dall.Managing_Financially ) + 1
+    dall.i_Politicians_All_The_Same = extract_number.( dall.Politicians_All_The_Same ) .+ 1 # extract subtracys one ..
+    dall.i_Politics_Force_For_Good = extract_number.( dall.Politics_Force_For_Good ) .+ 1
+    dall.i_Party_In_Government_Doesnt_Matter = extract_number.( dall.Party_In_Government_Doesnt_Matter ) .+ 1
+    dall.i_Politicians_Dont_Care = extract_number.( dall.Politicians_Dont_Care ) .+ 1
+    dall.i_Politicians_Want_To_Make_Things_Better = extract_number.( dall.Politicians_Want_To_Make_Things_Better ) .+ 1
+    dall.i_Shouldnt_Rely_On_Government = extract_number.( dall.Shouldnt_Rely_On_Government ) .+ 1
+    dall.i_Satisfied_With_Income = extract_number.( dall.Satisfied_With_Income )  .+ 1
+    dall.i_Managing_Financially = extract_number.( dall.Managing_Financially ) .+ 1
+    dall.overall_pre = copy( dall.overall_post ) # Needed as a dummy for some crosstabs
+    dall.overall_change = dall.overall_pre .- dall.overall_post # always zero
+    
     #
     # Dump modified data
     #
@@ -898,64 +906,51 @@ function make_summarystats( dall :: DataFrame ) :: NamedTuple
     plots = Dict()
     hists = Dict()
     algdata = AlgebraOfGraphics.data(dall)
-    for p in POLICIES 
+    for p in vcat(POLICIES,:overall) # add an overall col 
         i += 1
-        ppre = Symbol("$(p)_pre")
-        vpre = dall[!,ppre]
         ppost = Symbol("$(p)_post")
         vpost = dall[!,ppost]                
-        haters_pre = dall[vpre .< 30, : ]
-        lovers_pre = dall[vpre .> 70, : ]
-
-        df.nzeros_pre[i] = sum( dall[vpre .== 0,:probability_weight])*100
-        df.nzeros_post[i] = sum( dall[vpost .== 0,:probability_weight])*100
-        df.nhundreds_pre[i] = sum( dall[vpre .== 100,:probability_weight])*100
+        # no 'pre' for the overall score, so... 
         df.nhundreds_post[i] = sum( dall[vpost .== 100,:probability_weight])*100
+        df.nzeros_post[i] = sum( dall[vpost .== 0,:probability_weight])*100
 
-        nhaters_pre = sum( haters_pre.probability_weight )*100
-        nlovers_pre = sum( lovers_pre.probability_weight )*100
         haters_post = dall[vpost .< 30, : ] 
         lovers_post = dall[vpost .> 70, : ]
         nhaters_post = sum( haters_post.probability_weight )*100
         nlovers_post = sum( lovers_post.probability_weight )*100
-        # 
-        avlove_pre = 100*sum( lovers_pre[!,ppre] .* lovers_pre.probability_weight ) / nlovers_pre
-        avhate_pre = 100*sum( haters_pre[!,ppre] .* haters_pre.probability_weight ) / nhaters_pre
-
-
-        # change in love/hate among the top 30/bottom 30 of those who loved/hated pre
-        # so the post columns from the pre-sub
-        avlove_post = 100*sum( lovers_pre[!,ppost] .* lovers_pre.probability_weight ) / nlovers_pre
-        avhate_post = 100*sum( haters_pre[!,ppost] .* haters_pre.probability_weight ) / nhaters_pre
 
         #=
         println( "plotting $p")
         hsp = AlgebraOfGraphics.plot( hs )
         =# 
-        hs = fit(Histogram, vpre, w )
-        hsp = AlgebraOfGraphics.plot( hs )
-        hsp = algdata * 
-            mapping(ppre,weights=:probability_weight) * 
-            AlgebraOfGraphics.density() |> AlgebraOfGraphics.draw
-        plots[p] = hsp
-        hists[p] = hs
         df.name[i] = lpretty(p)
         # @show w vpre
-        df.std[i] = std( vpre, w )
-        df.mean_pre[i] = mean( vpre, w )
-        df.median_pre[i] = median( vpre, w )
         df.mean_post[i] = mean( vpost, w )        
         df.median_post[i] = median( vpost, w )
 
+        ppre = Symbol("$(p)_pre")
+        vpre = dall[!,ppre]
+        df.std[i] = std( vpre, w )
+        haters_pre = dall[vpre .< 30, : ]
+        lovers_pre = dall[vpre .> 70, : ]
+        nhaters_pre = sum( haters_pre.probability_weight )*100
+        nlovers_pre = sum( lovers_pre.probability_weight )*100
+        # 
+        # change in love/hate among the top 30/bottom 30 of those who loved/hated pre
+        # so the post columns from the pre-sub
+        avlove_post = 100*sum( lovers_pre[!,ppost] .* lovers_pre.probability_weight ) / nlovers_pre
+        avhate_post = 100*sum( haters_pre[!,ppost] .* haters_pre.probability_weight ) / nhaters_pre
+        avlove_pre = 100*sum( lovers_pre[!,ppre] .* lovers_pre.probability_weight ) / nlovers_pre
+        avhate_pre = 100*sum( haters_pre[!,ppre] .* haters_pre.probability_weight ) / nhaters_pre        
+        df.nhundreds_pre[i] = sum( dall[vpre .== 100,:probability_weight])*100
+        df.nzeros_pre[i] = sum( dall[vpre .== 0,:probability_weight])*100
+        df.mean_pre[i] = mean( vpre, w )
+        df.median_pre[i] = median( vpre, w )
         df.avlove_pre[i] = avlove_pre
         df.avhate_pre[i] = avhate_pre
         df.nhaters_pre[i] = nhaters_pre
         df.nlovers_pre[i] = nlovers_pre
-        df.nlovers_post[i] = nlovers_post
-        df.avlove_post[i] = avlove_post
-        df.avhate_post[i] = avhate_post
-        df.nhaters_post[i] = nhaters_post
-
+        df.change_amongst_lovers[i] = avlove_post - avlove_pre
         df.change_amongst_haters[i] = avhate_post - avhate_pre
         # OneSampleTTest
         df.overall_p[i] = pvalue(
@@ -964,11 +959,26 @@ function make_summarystats( dall :: DataFrame ) :: NamedTuple
             EqualVarianceTTest( lovers_pre[ !, ppost ], lovers_pre[!, ppre ] )) # paired t-test
         df.haters_p[i] = pvalue(
             EqualVarianceTTest( haters_pre[ !, ppost ], haters_pre[!, ppre ] )) # paired t-test
-        
-        df.change_amongst_lovers[i] = avlove_post - avlove_pre
+        hs = fit(Histogram, vpre, w )
+        hsp = AlgebraOfGraphics.plot( hs )
+        hsp = algdata * 
+            mapping(ppre,weights=:probability_weight) * 
+            AlgebraOfGraphics.density() |> AlgebraOfGraphics.draw
+        plots[p] = hsp
+        hists[p] = hs
+        df.avlove_post[i] = avlove_post
+        df.avhate_post[i] = avhate_post
+        df.nhaters_post[i] = nhaters_post
+        df.nlovers_post[i] = nlovers_post
     end
+    println( POLICIES )
     df.average_change = df.mean_post - df.mean_pre
-    println( "x")
+    #
+    # hacked overall summary - set pre vars all to zero
+    #
+    df[df.name .== "Overall",
+        [:nhundreds_pre,:nzeros_pre,:mean_pre,:median_pre,:avlove_pre,
+        :avhate_pre, :nhaters_pre, :nlovers_pre, :average_change]] .= 0.0
     discretevars = []
     non_discretevars = []
     for p in SUMMARY_VARS
@@ -1111,10 +1121,15 @@ function make_and_print_summarystats( dall :: DataFrame )
     close( io )
 end
 
-
+"""
+dall - 
+extension - pre or post
+normalise - 
+"""
 function policies_as_matrix( dall :: DataFrame, extension::String; normalise=true )::Matrix
     # FIXME next 2 are dups
     pol = Symbol.(string.(POLICIES) .* extension ) #"_pre")
+    println( "pol=$(pol) ")
     n = length(pol)
     d = Matrix{Float64}( dall[!,pol] )'
     # normalize
