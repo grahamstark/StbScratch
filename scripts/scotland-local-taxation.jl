@@ -1,19 +1,24 @@
-using DataFrames
-using CSV
-using Format
-using CairoMakie 
 using ArgCheck
+using CairoMakie 
+using CSV
+using DataFrames
+using Format
 using Pkg, Pkg.Artifacts
+using StatsBase
 
 using ScottishTaxBenefitModel
-using .RunSettings
+using .Definitions
 using .FRSHouseholdGetter 
-using .STBParameters
+using .LocalLevelCalculations
 using .ModelHousehold
-using .LocalLevelCalculations: apply_size_criteria, apply_rent_restrictions,
-    make_la_to_brma_map, LA_BRMA_MAP, lookup, apply_rent_restrictions, calc_council_tax
-using .WeightingData: LA_NAMES, LA_CODES
-
+using .Monitor: Progress
+using .Results
+using .Runner: do_one_run
+using .RunSettings
+using .STBParameters
+using .TheEqualiser
+using .Utils
+using .WeightingData
 
 PROGRESSIVE_RELATIVITIES = Dict{CT_Band,Float64}(
     # halved below, doubled above
@@ -34,15 +39,13 @@ function get_system( ; year = 2024 ):: TaxBenefitSystem
     return sys
 end
 
-
 function setct!( sys, value )
     for k in eachindex(sys.loctax.ct.band_d)
         sys.loctax.ct.band_d[k] = value
     end
 end
 
-
-INCREMENT_NAMES = [
+const INCREMENT_NAMES = [
     "£100pa Band D Increase",
     "£100pa Band D",
     "1p increase to all income tax bands",
@@ -52,7 +55,7 @@ INCREMENT_NAMES = [
     "£100pa Band D Increase"
 ]
 
-SYSTEM_NAMES = [
+const SYSTEM_NAMES = [
     "Current System", 
     "CT Incidence",
     "Local Income Tax",
@@ -64,8 +67,6 @@ SYSTEM_NAMES = [
 function fmt(v::Number) 
     return Format.format(v, commas=true, precision=0)
 end
-
-
 
 function make_parameter_set(;
     local_income_tax :: Real, 
@@ -111,6 +112,22 @@ function make_parameter_set(;
         revalued_prices_w_prog_bands_sys
 end
 
+"""
+With some semi-sensible net zero cost defaults based on the Wales case
+"""
+function make_parameter_set( code :: Symbol )
+
+    # r = DEFAULT_REFORM_LEVELS[
+    #    Symbol.(DEFAULT_REFORM_LEVELS.code) .== code,:][1,:]
+    return make_parameter_set(;
+        local_income_tax = 10.0, # r.local_income_tax,
+        fairer_bands_band_d = 0.0, # r.fairer_bands_band_d,
+        proportional_property_tax = 0.8, # r.proportional_property_tax,
+        revalued_housing_band_d = -700.0, # r.revalued_housing_band_d,
+        revalued_housing_band_d_w_fairer_bands = -1000.0, # r.revalued_housing_band_d_w_fairer_bands,
+        code = code )
+end
+
 function incremented_params( code :: Symbol, pct_change = false )
     base_sys,
     no_ct_sys,
@@ -144,15 +161,23 @@ function incremented_params( code :: Symbol, pct_change = false )
         ppt_sys, 
         revalued_prices_sys,
         revalued_prices_w_prog_bands_sys
-
 end
 
 obs = obs = Observable( Progress(settings.uuid,"",0,0,0,0))
 
+
+function get_base_cost(  settings :: Settings,
+    base_sys :: TaxBenefitSystem ) :: Real
+    frames = do_one_run( settings, [base_sys], obs )        
+    settings.poverty_line = make_poverty_line( frames.hh[1], settings )
+    pc_frames = summarise_frames!(frames, settings)
+    base_cost = pc_frames.income_summary[1][1,:net_cost]
+    return base_cost
+end
+
 function do_equalising_runs( settings :: Settings )
     global obs 
     # not acually using revenue and total here
-    
     no_ct_sys,
     local_it_sys,
     progressive_ct_sys,
@@ -167,7 +192,7 @@ function do_equalising_runs( settings :: Settings )
     FRSHouseholdGetter.restore()
     FRSHouseholdGetter.set_local_weights_and_incomes!( settings; reset=false )
 
-    base_cost = get_base_cost( base_sys )
+    base_cost = get_base_cost( settings, base_sys )
         
     local_income_tax = equalise( 
         eq_it, 
@@ -210,7 +235,6 @@ function do_equalising_runs( settings :: Settings )
         revalued_housing_band_d_w_fairer_bands )
 end
 
-
 function do_local_sim()
     settings = Settings()
     settings.do_local_run = true
@@ -241,4 +265,104 @@ function do_local_sim()
     end
 end
 
-do_local_sim()
+# do_local_sim()
+
+
+
+function changes_to_table( base::Dict, changed::Dict )
+    tables = []
+    for sys in 1:7
+        codes=copy(CTLEVELS.code) # Symbol.(CTLEVELS.code)
+        push!( codes, "Total" ) # Symbol(""))
+        names=copy(CTLEVELS.name)
+        println( "names=$names")
+        push!(names,"Total")
+        d = DataFrame( 
+            name=names, 
+            code=codes, 
+            ct_change = zeros(23), 
+            ctb_change = zeros(23),
+            net_change = zeros(23) )  
+        
+        net_total = 0.0      
+        ctb_total = 0.0
+        ct_total = 0.0
+        for code in CCODES
+            scode = String(code) ## FIXME fix base to symbol
+            println( "looking for code $scode")
+            if sys == 3 ## income tax
+                ct_change = changed[scode].income_summary[sys][1,:income_tax] - 
+                    base[scode].income_summary[sys][1,:income_tax]
+            else
+                ct_change = changed[scode].income_summary[sys][1,:local_taxes] - 
+                    base[scode].income_summary[sys][1,:local_taxes]
+            end
+            ctb_change = changed[scode].income_summary[sys][1,:council_tax_benefit] - 
+                base[scode].income_summary[sys][1,:council_tax_benefit]
+            net_change = ct_change - ctb_change
+            net_total += net_change
+            ctb_total += ctb_change
+            ct_total += ct_change
+            d[(d.code.==scode),:ct_change] .= ct_change
+            d[(d.code.==scode),:ctb_change] .= ctb_change
+            d[(d.code.==scode),:net_change] .= net_change
+        end
+        d[23,:ct_change] = ct_total
+        d[23,:ctb_change] = ctb_total
+        d[23,:net_change] = net_total
+        push!(tables, d)
+    end
+    tables
+end
+
+
+function write_main_tables( mainres :: NamedTuple, lares :: Dict, lares_incr :: Dict )
+    open("../WalesTaxation/output/main_tables.md","w") do outfile
+        println( outfile, "\n\n### Accuracy: Modelled Net Council Tax vs Actual \n£000s pa\n")
+        pretty_table( outfile,
+            DEFAULT_REFORM_LEVELS[!,[:name,:actual_revenues,:modelled_ct,:modelled_ctb,:net_modelled]],
+            formatters=how_we_doing_fmt, 
+            tf = tf_markdown )
+
+        println( outfile, "\n\n### Baseline reform levels\n")
+        pretty_table( outfile,
+            DEFAULT_REFORM_LEVELS[!,
+                [:name,
+                :local_income_tax,
+                :fairer_bands_band_d,
+                :proportional_property_tax,
+                :revalued_housing_band_d,
+                :revalued_housing_band_d_w_fairer_bands]],
+            formatters=headline_fmt, tf = tf_markdown )
+        change_frames = changes_to_table( lares, lares_incr )
+        for sysno in 1:7
+            println( outfile, "\n\n## $(SYSTEM_NAMES[sysno])\n")
+            println( outfile, "### Gainers and Losers\n" )
+            println( outfile, "\n####  By Tenure  \n")
+            pretty_table( outfile, mainres.gain_lose[sysno].ten_gl, formatters=gl_fmt, tf = tf_markdown )
+            println( outfile, "\n\n#### By Decile\n")
+            pretty_table( outfile, mainres.gain_lose[sysno].dec_gl, formatters=gl_fmt, tf = tf_markdown )
+            println( outfile, "\n\n#### By Number of Children\n")
+            pretty_table( outfile, mainres.gain_lose[sysno].children_gl, formatters=gl_fmt, tf = tf_markdown )
+            println( outfile, "\n\n#### By Number of People \n")
+            pretty_table( outfile, mainres.gain_lose[sysno].hhtype_gl, formatters=gl_fmt, tf = tf_markdown )
+            println( outfile, "\n\n### Effect of $(INCREMENT_NAMES[sysno]). \n£000s pa\n")
+            pretty_table( outfile, change_frames[sysno][!,[:name, :ct_change,:ctb_change,:net_change ]], formatters=how_we_doing_fmt, tf = tf_markdown )
+        end
+    end # file open
+end
+
+# prettytable( df; formatters=countfmt, tf = tf_markdown )
+
+function do_everything()
+    pc_frames=JLD2.load("all_las_frames.jld2")
+    pc_results = JLD2.load( "all_las_results.jld2")
+    # pc_frames, pc_results = calculate_local()
+    overall_results = do_all( pc_frames, do_gain_lose=true )
+    # res_incr = calculate_local( incremented = true )
+    pc_frames_incr = JLD2.load("all_las_frames-incremened.jld2")
+    pc_results_incr = JLD2.load("all_las_results-incremened.jld2")
+    write_main_tables( overall_results, pc_results, pc_results_incr )
+    analyse_all( overall_results, pc_results )
+
+end
