@@ -266,8 +266,32 @@ function do_local_sim()
 end
 
 # do_local_sim()
+function how_we_doing_fmt(val, row, col )
+    if col == 1 # name col
+       return val
+    end
+    return fmt(val/1000.0)
+end
 
+function gl_fmt(val, row, col )
+    if col == 1 # name col
+        if typeof(val) <: AbstractFloat
+            return Format.format(val, precision=0)
+        else 
+            return pretty("$val")
+        end
+    end
+    return fmt(val)
+end
 
+function headline_fmt(val, row, col )
+    if col == 1
+       return val
+    elseif col in (2,4)
+       return Format.format(val, precision=2)
+    end 
+    return fmt(val)
+end
 
 function changes_to_table( base::Dict, changed::Dict )
     tables = []
