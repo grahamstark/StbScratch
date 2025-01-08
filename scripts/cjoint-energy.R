@@ -1,10 +1,10 @@
-
 #
 # Start of a script to do ConJoint analysis using
 # the `cjoint` package (https://cran.r-project.org/web/packages/cjoint/cjoint.pdf)
 #
 library( tidyverse)
 library( cjoint )
+library( forcats )
 
 #
 # This is the QUALTRICS dataset wrangled into the cjoint format
@@ -16,7 +16,7 @@ eng$Gender = as.factor(eng$Gender)
 eng$Ethnic = as.factor(eng$Ethnic)
 eng$Employment_Status = as.factor(eng$Employment_Status)
 eng$Owner_Occupier = as.factor(eng$Owner_Occupier)
-eng$At_Risk_of_Destitution = as.factor(eng$At_Risk_of_Destitution)
+# eng$At_Risk_of_Destitution = as.factor(eng$At_Risk_of_Destitution)
 eng$Managing_Financially = as.factor(eng$Managing_Financially)
 eng$Satisfied_With_Income = as.factor(eng$Satisfied_With_Income)
 eng$General_Health = as.factor(eng$General_Health)
@@ -43,12 +43,20 @@ eng$Job_Losses = as.factor(eng$Job_Losses)
 eng$Energy_Poverty = as.factor(eng$Energy_Poverty)
 eng$Avoidable_Deaths_From_Cold = as.factor(eng$Avoidable_Deaths_From_Cold)
 
+eng$Destitution <- factor(eng$At_Risk_of_Destitution < 75, labels=c('At Risk (score >= 75)', "Not At Risk (Score < 75)"))
+es <- as.numeric(eng$Employment_Status)
+eng$Work_Status <- factor((es == 6)|(es == 7)|(es == 11), labels=c('Not In Work', 'In Work'))
 glimpse( eng )
+eng$Sex <- factor(eng$Gender != 'Male', labels=c('Male', 'Female/Non Binary'))
+eng$EthnicGroup = factor(eng$Ethnic != '1. English, Welsh, Scottish, Northern Irish or British', labels=c('White British', 'Other Ethnic Group'))
+eng$Last_Election = factor(eng$Vote_Last_Election == 'Labour Party', labels=c('Not Labour', 'Labour'))
+eng$Low_On_Life_Ladder = factor(eng$Ladder < 5, labels=c('High on Ladder (5..10)', 'Low on Ladder (1..4)'))
+eng$AgeBand = factor(eng$Age < 55, labels=c('Age 18-54', 'Age 55+'))
 
 # trying to follow the example in the cjoint manual.
 res1 <- amce( chosen_policy ~ 
     Gender + 
-    Employment_Status + 
+    Work_Status + 
     Ownership_Of_Energy_System + 
     Onwership_Of_N_Sea_Oil +
     Transition_To_Net_Zero +
@@ -61,6 +69,14 @@ res1 <- amce( chosen_policy ~
     data=eng, respondent.id="CaseID" )
 
 res2 <- amce( chosen_policy ~ 
+    Sex +
+    EthnicGroup + 
+    Work_Status +
+    Owner_Occupier +
+    Destitution +
+    AgeBand +
+    Last_Election +
+    Low_On_Life_Ladder +
     Ownership_Of_Energy_System + 
     Onwership_Of_N_Sea_Oil +
     Transition_To_Net_Zero +
@@ -74,4 +90,11 @@ res2 <- amce( chosen_policy ~
 
 v2 = summary.amce(res2)
 plot(res2)
+
+#
+# subsetting example
+# Anna - This makes a subset of only Males
+eng_subset <- subset(eng, Sex == 'Male')
+# then just repeat the acmes and picture for this subset ..
+# and then female .. Work_Status 
 
