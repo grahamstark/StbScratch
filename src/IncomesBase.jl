@@ -8,6 +8,63 @@ using DataStructures
 import Base
 export IncomesList
 
+@enum Incomes begin
+    i1 = 1
+    i2 = 2
+    i3 = 3
+    i4 = 99
+end
+
+import Base.sum
+import Base.getindex 
+import Base.maximum
+
+const IncomesList2 = SortedDict{Incomes,Number}
+const IncomesSet2 = SortedDict{Incomes}
+
+"""
+return 0 from a[k] if `k` is not a key of `a` 
+"""
+@inline function Base.getindex(m::IncomesList2, k :: Incomes )
+    get( m, k, zero(eltype(values(m))) )
+end
+
+@inline Base.sum(m::IncomesList2) = sum(values(m))
+
+@inline function mult!(i::IncomesList2, m::Number)
+    for k in keys(i)
+        i[k] = i[k] * m
+    end
+end
+
+@inline function add!(i::IncomesList2, m::Number)
+    for k in keys(i)
+        i[k] = i[k] + m
+    end
+end
+
+@inline Base.maximum(i::IncomesList2) = maximum(values(i))
+@inline Base.minimum(i::IncomesList2) = minimum(values(i))
+
+#= 
+
+k = mergewith(+,i,j)
+incs = IncomesList2[]
+for i in 1:10
+    inc = IncomesList2();for j in rand(1:3)
+    inc[rand(instances(Incomes))] += rand(1:100)
+    push!(incs,inc)
+    end
+end
+
+k = IncomesList2()
+for i in incs
+    k = mergewith(+,k,i)
+end
+
+k = mergewith(+, i..., k )
+=#
+
 struct IncomesList{K,T<:Number}
     i :: SortedDict{K,T}
     
@@ -21,7 +78,7 @@ struct IncomesList{K,T<:Number}
 end
 
 struct IncomesSet{K}
-    s :: SortedSet
+    s :: SortedSet{K}
 
     function IncomesSet{K}()
         new{K}( SortedSet{K}())
