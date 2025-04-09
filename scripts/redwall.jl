@@ -1,7 +1,7 @@
 #
 # This script generates regressions & charts from the ActNow dataset,
+# remember to: include( "actnow-common.jl")
 #
-include( "actnow-common.jl")
 
 """
 Correlation matrix for the policies
@@ -225,7 +225,7 @@ end # make dataset
 
 function make_labels()::Dict{String,String}
     d = Dict{String,String}()
-    for policy in POLICIES
+    for policy in USED_POLICIES
         pp = lpretty( policy )
         d["$(policy)_change"] = "$pp"
         d["$(policy)_pre"] = "$pp"
@@ -255,7 +255,7 @@ function run_regressions_by_mainvar( dall::DataFrame, mainvar :: Symbol )
     #
     regs=[]
     simpleregs = []
-    for policy in POLICIES
+    for policy in USED_POLICIES
         depvar = Symbol( "$(policy)_pre")
         if mainvar == :x
             reg = lm( @eval(@formula( $(depvar) ~ 
@@ -280,7 +280,7 @@ function run_regressions_by_mainvar( dall::DataFrame, mainvar :: Symbol )
     # regression of change in popularity of each policy against each explanation
     #
     diffregs=[]
-    for policy in POLICIES
+    for policy in USED_POLICIES
         depvar = Symbol( "$(policy)_change")
         relgains = Symbol( "$(policy)_treat_relgains" )
         relsec =Symbol( "$(policy)_treat_security" )
@@ -512,7 +512,7 @@ function make_big_file_by_policy()
     end
     println(io,"</section'>")
     println(io, "<h2 id='regressions'>Regressions: by Policy</h2>")
-    for policy in POLICIES 
+    for policy in USED_POLICIES 
         prettypol = lpretty( policy )
         exvar = prettypol * " (Before Explanation)"
         # exvar = MAIN_EXPLANDICT[Symbol(mainvar)]
@@ -737,7 +737,7 @@ end
 =#
 
 #=
-for p in POLICIES 
+for p in USED_POLICIES 
     if p !== :democracy 
         threeplot, scatter, facet = draw_policies( dall, p )
         println( p )
@@ -750,13 +750,13 @@ end
 
 function make_all_graphs( dall::DataFrame )
     io = open( "tmp/image-index.html","w")
-    for p1 in POLICIES 
+    for p1 in USED_POLICIES 
         println( io, "<section>")
         pp1 = lpretty( p1 )
         println( io, "<h3>$pp1</h3>" )
         println( io, "<table class='table'>")
         println( io, "<thead></thead><tbody>")
-        for p2 in POLICIES 
+        for p2 in USED_POLICIES 
             pp2 = lpretty( p2 )
             if p1 !== p2 
                 cp1,cp2,cp3 = draw_policies2( dall, p1, p2 )
@@ -779,7 +779,7 @@ function make_all_graphs( dall::DataFrame )
         println( io, "</tbody></table>")
         println( io, "</section>")
     end
-    for p1 in POLICIES 
+    for p1 in USED_POLICIES 
         println( io, "<section>")
         pp1 = lpretty( p1 )
         println( io, "<h3>Change in Score vs Rating of Argument $pp1</h3>" )
@@ -811,13 +811,13 @@ function run_regressions( dall :: DataFrame )
         run_regressions_by_mainvar( dall, mainvar )
     end
 
-    for policy in POLICIES
+    for policy in USED_POLICIES
         run_regressions_by_policy( dall, policy )
     end
 end
 
 function score_summarystats( dall :: DataFrame ) :: DataFrame
-    n = length( POLICIES )*3
+    n = length( USED_POLICIES )*3
     df = DataFrame(
         name = fill("",n),
         subname = fill("",n),
@@ -830,8 +830,8 @@ function score_summarystats( dall :: DataFrame ) :: DataFrame
         other_argument_mean= zeros(n),
         other_argument_median = zeros(n))
     i = 0
-    for p in POLICIES
-        for group in ["All","Lovers","Haters"]
+    for p in USED_POLICIES
+        for group in USED_ATTITUDES
             i += 1
             ppre = Symbol("$(p)_pre")
             vpre = dall[!,ppre]
@@ -845,19 +845,22 @@ function score_summarystats( dall :: DataFrame ) :: DataFrame
                 dall[vpre .< 30, : ]
             end
             for t in TREATMENT_TYPES
+                println( "on Group $group policy $p treatment $t")
                 k = Symbol( "$(p)_treat_$(t)_score" ) # e.g. :basic_income_treat_absgains_score
                 subd = dallg[ .! ismissing.(dallg[!,k]),[k,:probability_weight]] # e.g. just those reporting a score for politics, absgains argument, and so on
-                subd.probability_weight = ProbabilityWeights( subd.probability_weight )
-                a = mean( subd[!,k], subd.probability_weight )
-                println( "$k = a=$a")
-                m = median( Float64.(subd[!,k]), subd.probability_weight )
-                println( "m = $m")
-                ak = Symbol( "$(t)_mean")
-                mk = Symbol( "$(t)_median")
-                df[i,:name] = lpretty(p) 
-                df[i,:subname] = group
-                df[i,ak] = a
-                df[i,mk] = m
+                if size(subd)[1] > 0
+                    subd.probability_weight = ProbabilityWeights( subd.probability_weight )
+                    a = mean( subd[!,k], subd.probability_weight )
+                    println( "$k = a=$a")
+                    m = median( Float64.(subd[!,k]), subd.probability_weight )
+                    println( "m = $m")
+                    ak = Symbol( "$(t)_mean")
+                    mk = Symbol( "$(t)_median")
+                    df[i,:name] = lpretty(p) 
+                    df[i,:subname] = group
+                    df[i,ak] = a
+                    df[i,mk] = m
+                end
             end
         end
     end
@@ -907,7 +910,7 @@ function make_summarystats( dall :: DataFrame ) :: NamedTuple
     plots = Dict()
     hists = Dict()
     algdata = AlgebraOfGraphics.data(dall)
-    for p in vcat(POLICIES,:overall) # add an overall col 
+    for p in vcat(USED_POLICIES,:overall) # add an overall col 
         i += 1
         ppost = Symbol("$(p)_post")
         vpost = dall[!,ppost]                
@@ -954,12 +957,17 @@ function make_summarystats( dall :: DataFrame ) :: NamedTuple
         df.change_amongst_lovers[i] = avlove_post - avlove_pre
         df.change_amongst_haters[i] = avhate_post - avhate_pre
         # OneSampleTTest
+
         df.overall_p[i] = pvalue(
             EqualVarianceTTest( dall[ !, ppost ], dall[!, ppre ] )) # paired t-test
-        df.lovers_p[i] = pvalue(
-            EqualVarianceTTest( lovers_pre[ !, ppost ], lovers_pre[!, ppre ] )) # paired t-test
-        df.haters_p[i] = pvalue(
+        if size(lovers_pre[ !, ppost ])[1] > 1
+            df.lovers_p[i] = pvalue(
+                EqualVarianceTTest( lovers_pre[ !, ppost ], lovers_pre[!, ppre ] )) # paired t-test
+        end
+        if size(haters_pre[ !, ppost ])[1] > 1
+            df.haters_p[i] = pvalue(
             EqualVarianceTTest( haters_pre[ !, ppost ], haters_pre[!, ppre ] )) # paired t-test
+        end
         hs = fit(Histogram, vpre, w )
         hsp = AlgebraOfGraphics.plot( hs )
         hsp = algdata * 
@@ -972,7 +980,7 @@ function make_summarystats( dall :: DataFrame ) :: NamedTuple
         df.nhaters_post[i] = nhaters_post
         df.nlovers_post[i] = nlovers_post
     end
-    println( POLICIES )
+    println( USED_POLICIES )
     df.average_change = df.mean_post - df.mean_pre
     #
     # hacked overall summary - set pre vars all to zero
@@ -1003,7 +1011,7 @@ function make_summarystats( dall :: DataFrame ) :: NamedTuple
             plots[p] = draw(barc)
         end
     end
-    correlations, pvals, degrees_of_freedom = corrmatrix( dall, POLICIES )
+    correlations, pvals, degrees_of_freedom = corrmatrix( dall, USED_POLICIES )
     scores = score_summarystats( dall  )
     (; summarystats = df[1:i,:], plots, hists, correlations, discretevars, non_discretevars, pvals, degrees_of_freedom, scores )
 end
@@ -1129,7 +1137,7 @@ normalise -
 """
 function policies_as_matrix( dall :: DataFrame, extension::String; normalise=true )::Matrix
     # FIXME next 2 are dups
-    pol = Symbol.(string.(POLICIES) .* extension ) #"_pre")
+    pol = Symbol.(string.(USED_POLICIES) .* extension ) #"_pre")
     println( "pol=$(pol) ")
     n = length(pol)
     d = Matrix{Float64}( dall[!,pol] )'
@@ -1152,13 +1160,19 @@ See: https://www.youtube.com/watch?v=FgakZw6K1QQ
 """
 function do_basic_pca( dall :: DataFrame; extension::String, maxoutdim = 3 )::Tuple
     #=
-    pol = Symbol.(string.(POLICIES) .* "_pre")
+    pol = Symbol.(string.(USED_POLICIES) .* "_pre")
     data = Matrix( dall[!,pol] )'
     =#
 
     data =policies_as_matrix( dall, extension )
     M = fit(PCA, data; maxoutdim=maxoutdim)
-    prediction = DataFrame( predict(M,data)',["PC1$(extension)","PC2$(extension)","PC3$(extension)"])
+    labels = []
+    ncols = size(M)[2]
+    println( ncols )
+    for i in 1:ncols
+        push!( labels, "PC$(i)$(extension)")
+    end
+    prediction = DataFrame( predict(M,data)',labels ) #["PC1$(extension)","PC2$(extension)","PC3$(extension)"])
     M, data, prediction
 end
 
@@ -1283,7 +1297,7 @@ function summarise_pca( dall :: DataFrame, M, extension :: String )
     # reverse the sign of the 1st set of loads to match
     # what Julia prints - no idea whatsoever.
     loads[:,1] .= loads[:,1] .* -1
-    pcf = DataFrame( names=pretty.( string.(POLICIES)),
+    pcf = DataFrame( names=pretty.( string.(USED_POLICIES)),
         PC1=loads[:,1],
         PC2=loads[:,2],
         PC3=loads[:,3])

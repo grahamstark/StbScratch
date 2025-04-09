@@ -59,7 +59,7 @@ const MAIN_EXPLANDICT = Dict([
     "sqrt_phq_8" => "Square Root of PHQ-8 Personal Health Questionnaire Depression Scale"])
 
 const MAIN_EXPLANVARS = Symbol.(collect((keys( MAIN_EXPLANDICT ))))
-
+const ATTITUDES = ["All","Lovers","Haters"]
 const POLICIES = [:basic_income, :green_nd, :utilities, :health, :childcare, :education, :housing, :transport, :democracy, :tax]
 const POLICY_LABELS = Dict([:basic_income=>"Basic Income", 
     :green_nd=>"Green New Deal", 
@@ -71,6 +71,9 @@ const POLICY_LABELS = Dict([:basic_income=>"Basic Income",
     :transport=>"Transport", 
     :democracy=>"Democracy", 
     :tax=>"Taxation"])
+
+USED_POLICIES = copy( POLICIES )
+USED_ATTITUDES = copy(ATTITUDES)
 
 const RENAMES_V4 = Dict(
     "Q65.2_1"=>"overall_post",
