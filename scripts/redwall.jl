@@ -116,12 +116,12 @@ end
 # See: https://jmboehm.github.io/RegressionTables.jl/stable/regression_statistics/#RegressionTables.AbstractUnderStatistic
 # and the RegressionTables.jl source code.
 #
-struct PValue <: RegressionTables.AbstractUnderStatistic
+struct ConfInt <: RegressionTables.AbstractUnderStatistic
     val::Float64
 end
 
-function PValue(rr::RegressionModel, k::Int; vargs...)
-    PValue(RegressionTables._pvalue(rr)[k])
+function ConfInt(rr::RegressionModel, k::Int; vargs...)
+    ConfInt(RegressionTables._pvalue(rr)[k])
 end
 
 function g2i( Gender )
@@ -295,15 +295,15 @@ function run_regressions_by_mainvar( dall::DataFrame, mainvar :: Symbol )
         push!( diffregs, reg )
     end 
     labels = make_labels()
-    regtable(regs...;file="tmp/actnow-$(mainvar)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels, below_statistic = TStat )
-    regtable(simpleregs...;file="tmp/actnow-simple-$(mainvar)-ols.html",number_regressions=true, stat_below = false, render=HtmlTable(), labels=labels, below_statistic = PValue)
-    regtable(diffregs...;file="tmp/actnow-change-$(mainvar)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
-    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
-    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
-    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
-    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
+    regtable(regs...;file="tmp/actnow-$(mainvar)-ols.html",number_regressions=true, stat_below = true, render=HtmlTable(), labels=labels, below_statistic = ConfInt )
+    regtable(simpleregs...;file="tmp/actnow-simple-$(mainvar)-ols.html",number_regressions=true, stat_below = true, render=HtmlTable(), labels=labels, below_statistic = ConfInt)
+    regtable(diffregs...;file="tmp/actnow-change-$(mainvar)-ols.html",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=HtmlTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.txt",number_regressions=false, stat_below = true, render=AsciiTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.txt",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=AsciiTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.txt",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=AsciiTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(mainvar)-ols.tex",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=LatexTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(mainvar)-ols.tex",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=LatexTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(mainvar)-ols.tex",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=LatexTable(), labels=labels)
 end # run_regressions_by_mainvar
 
 """
@@ -362,23 +362,23 @@ function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
     end 
     # 
     labels = make_labels()
-    regtable(regs...;file="tmp/actnow-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/actnow-simple-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
-    regtable(very_simpleregs...;file="tmp/actnow-very-simple-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
-    regtable(diffregs...;file="tmp/actnow-change-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
-    regtable(diffregs2...;file="tmp/actnow-change-sexless-$(policy)-ols.html",number_regressions=true, stat_below = false,  below_statistic = PValue, render=HtmlTable(), labels=labels)
+    regtable(regs...;file="tmp/actnow-$(policy)-ols.html",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=HtmlTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/actnow-simple-$(policy)-ols.html",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=HtmlTable(), labels=labels)
+    regtable(very_simpleregs...;file="tmp/actnow-very-simple-$(policy)-ols.html",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=HtmlTable(), labels=labels)
+    regtable(diffregs...;file="tmp/actnow-change-$(policy)-ols.html",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=HtmlTable(), labels=labels)
+    regtable(diffregs2...;file="tmp/actnow-change-sexless-$(policy)-ols.html",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=HtmlTable(), labels=labels)
     #
-    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.txt",number_regressions=false, stat_below = false, render=AsciiTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
-    regtable(very_simpleregs...;file="tmp/regressions/actnow-very-simple-$(policy)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
-    regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
-    regtable(diffregs2...;file="tmp/regressions/actnow-change-$(policy)-sexless-ols.txt",number_regressions=true, stat_below = false,  below_statistic = PValue, render=AsciiTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.txt",number_regressions=false, stat_below = true, render=AsciiTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.txt",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=AsciiTable(), labels=labels)
+    regtable(very_simpleregs...;file="tmp/regressions/actnow-very-simple-$(policy)-ols.txt",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=AsciiTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.txt",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=AsciiTable(), labels=labels)
+    regtable(diffregs2...;file="tmp/regressions/actnow-change-$(policy)-sexless-ols.txt",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=AsciiTable(), labels=labels)
     #    
-    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
-    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
-    regtable(very_simpleregs...;file="tmp/regressions/actnow-very-simple-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
-    regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
-    regtable(diffregs2...;file="tmp/regressions/actnow-change-ssexless-$(policy)-ols.tex",number_regressions=true, stat_below = false,  below_statistic = PValue, render=LatexTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.tex",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=LatexTable(), labels=labels)
+    regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.tex",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=LatexTable(), labels=labels)
+    regtable(very_simpleregs...;file="tmp/regressions/actnow-very-simple-$(policy)-ols.tex",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=LatexTable(), labels=labels)
+    regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.tex",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=LatexTable(), labels=labels)
+    regtable(diffregs2...;file="tmp/regressions/actnow-change-ssexless-$(policy)-ols.tex",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=LatexTable(), labels=labels)
 end # run_regressions_by_policy
 
 function edit_table( io, tablename )
@@ -1317,8 +1317,8 @@ function summarise_pca( dall :: DataFrame, M, extension :: String )
         regs...;
         file="tmp/regressions/pca-1$(extension).html",
         number_regressions=true, 
-        stat_below = false,  
-        below_statistic = PValue, 
+        stat_below = true,  
+        below_statistic = ConfInt, 
         render=HtmlTable())
     regstr = read("tmp/regressions/pca-1$(extension).html", String)
 
