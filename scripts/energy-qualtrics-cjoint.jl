@@ -128,14 +128,14 @@ outrow = 0
 caseid = 0
 for r in eachrow( qualtrics ) # round the conjoint survey
     global outrow,caseid,QKEYS,QVALS,RENAME_VALS
-    if r.Finished 
+    if r.Finished # Flag for this observation having been completed.
         caseid += 1
-        for contest_no in 1:15
+        for contest_no in 1:15 # there are 15 sets of choices
             polchoice = Symbol( "C$(contest_no)")
             println("ResponseId=$(r.ResponseId) choice[$(contest_no)] = $(r[polchoice])" )
             # skip missing
             if ! ismissing(r[polchoice])    
-                for profile in 1:2
+                for profile in 1:2 # 1st choice vs 2nd choice in each contest
                     outrow += 1
                     or = cjoint_data[outrow,:]
                     or.CaseID = caseid
@@ -148,7 +148,8 @@ for r in eachrow( qualtrics ) # round the conjoint survey
                         # println("renaming $v")
                         or[v] = r[v]
                     end
-                    for question in 1:9
+                    for question in 1:9 # and 9 questions indexed "f39a6972-d430-480e-b9ef-ae05ecda2ca0" .. "bf73b87c-8777-48c1-96a1-1e518f393fa4"
+                        # see QLABELS above
                         # e.g b0be5ee9-8cf2-4ed4-89d3-384d27c4acb6.1.1_CBCONJOINT
                         polkey = Symbol("$(QKEYS[question]).$(contest_no).$(profile)_CBCONJOINT")
                         outkey = Symbol( QVALS[question])
@@ -162,7 +163,8 @@ end # each row
 
 # truncate to actual #rows needed
 cjoint_data = cjoint_data[1:outrow,:]
-# print some stuff
-cjoint_data[!,vcat([:CaseID,:contest_no,:chosen_policy],QVALS)]
+# print some stuff - list to print is:
+to_print = vcat([:CaseID,:contest_no,:chosen_policy],QVALS)
+cjoint_data[!,to_print]
 # dump out
 CSV.write( "/mnt/data/ActNow/Energy/energy_data_for_cjoint.tab", cjoint_data; delim='\t')
