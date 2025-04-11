@@ -7,8 +7,8 @@ const DATA_DIR="/mnt/data/ActNow/"
 function process_qualtrix( 
     cjoint_data :: DataFrame, # weird qualtrix dataframe
     qlabels :: OrderedDict{String,String}, # map from question uuids to our new option labels
-    renames :: OrderedDict{String,String},
-    num_contests = 15 ) :: DataFrame   # dict of renames Q8.2 => age and so on )::DataFrame
+    renames :: OrderedDict{String,String}, # dict of renames Q8.2 => Age and so on 
+    num_contests = 15 ) :: DataFrame
     rename!( cjoint_data, renames )
     # create output df
     N = 100_000 # just initialise output bigger than we'll ever need
@@ -73,7 +73,7 @@ function process_qualtrix(
                 end # choice is present
             end # each contest
         end # response was finished
-    end
+    end # each row
     return odf[1:outrow,:]
 end
 

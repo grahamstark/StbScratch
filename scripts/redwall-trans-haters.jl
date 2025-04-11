@@ -14,4 +14,5 @@ tranhates = dall[(dall.transport_pre .< 30) .| (dall.transport_post .< 30), :]
 tranhates.probability_weight = ProbabilityWeights(tranhates.weight./sum(tranhates.weight))
 make_and_print_summarystats( tranhates )
 run_regressions( tranhates )
+make_all_graphs( tranhates )
 make_big_file_by_policy()

@@ -116,13 +116,14 @@ end
 # See: https://jmboehm.github.io/RegressionTables.jl/stable/regression_statistics/#RegressionTables.AbstractUnderStatistic
 # and the RegressionTables.jl source code.
 #
-struct ConfInt <: RegressionTables.AbstractUnderStatistic
-    val::Float64
-end
-
+# struct ConfInt <: RegressionTables.AbstractUnderStatistic
+#    val::Float64
+# end
+#=
 function ConfInt(rr::RegressionModel, k::Int; vargs...)
     ConfInt(RegressionTables._pvalue(rr)[k])
 end
+=#
 
 function g2i( Gender )
     return if Gender .== "Male"
@@ -368,7 +369,7 @@ function run_regressions_by_policy( dall::DataFrame, policy :: Symbol )
     regtable(diffregs...;file="tmp/actnow-change-$(policy)-ols.html",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=HtmlTable(), labels=labels)
     regtable(diffregs2...;file="tmp/actnow-change-sexless-$(policy)-ols.html",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=HtmlTable(), labels=labels)
     #
-    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.txt",number_regressions=false, stat_below = true, render=AsciiTable(), labels=labels)
+    regtable(regs...;file="tmp/regressions/actnow-$(policy)-ols.txt",number_regressions=false, stat_below = true, render=AsciiTable(), labels=labels,  below_statistic = ConfInt)
     regtable(simpleregs...;file="tmp/regressions/actnow-simple-$(policy)-ols.txt",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=AsciiTable(), labels=labels)
     regtable(very_simpleregs...;file="tmp/regressions/actnow-very-simple-$(policy)-ols.txt",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=AsciiTable(), labels=labels)
     regtable(diffregs...;file="tmp/regressions/actnow-change-$(policy)-ols.txt",number_regressions=true, stat_below = true,  below_statistic = ConfInt, render=AsciiTable(), labels=labels)
@@ -581,21 +582,34 @@ function make_big_file_by_policy()
     close(io)
 end
 
+function null_graph()
+    f = Figure()
+    ax = Axis( f[1,1]; title="No Graph Possible")
+    return f
+end
 
 """
 Draw our scatter plots with the parties colo[u]red in.
 """
 function draw_pol_scat( scatter, title )
-    axis = (width = 1200, height = 800, title=title)
-    return draw(scatter, 
-        scales( Color=(; palette=[:blue,:red,:orange,:green,:grey,:purple] )),
-        axis=axis, 
-        legend=(; title="Party Vote Last Election"))
+    try
+        axis = (width = 1200, height = 800, title=title)
+        return draw(scatter, 
+            scales( Color=(; palette=[:blue,:red,:orange,:green,:grey,:purple] )),
+            axis=axis, 
+            legend=(; title="Party Vote Last Election"))
+    catch e
+        return null_graph()
+    end
 end
 
 function draw_density( density, title )
-    axis = (width = 1200, height = 800, title=title)
-    return draw(density; axis=axis )
+    try 
+        axis = (width = 1200, height = 800, title=title)
+        return draw(density; axis=axis )
+    catch e 
+        return null_graph()
+    end
 end
 
 """
