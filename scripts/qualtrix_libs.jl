@@ -1,4 +1,13 @@
-using DataFrames, CSV, PrettyTables, OrderedCollections, SurveyDataWeighting, GLM, StatsBase
+using DataFrames
+using CSV 
+using PrettyTables 
+using OrderedCollections 
+using SurveyDataWeighting 
+using GLM 
+using ArgCheck
+using StatsBase
+
+using ActNow
 
 const DATA_DIR="/mnt/data/ActNow/"
 """
@@ -24,7 +33,7 @@ function process_qualtrix(
     # a field in the output for each age, sex ...
     for v in rename_vals
         et = eltype(skipmissing(cjoint_data[:,v])) # clumsy way to infer types for my output columns.
-        println( "v = $v; et=$(et) ")
+        # println( "v = $v; et=$(et) ")
         if et <: AbstractString
             odf[!,v] = Vector{Union{AbstractString,Missing}}(missing, N)
         else
@@ -59,7 +68,7 @@ function process_qualtrix(
                         # println("inrow names $(names(r))")
                         # block copy demogs 
                         for v in rename_vals
-                            println("mapping $v")
+                            # println("mapping $v")
                             or[v] = r[v]
                         end
                         for question in 1:num_questions # and 9 questions indexed "f39a6972-d430-480e-b9ef-ae05ecda2ca0" .. "bf73b87c-8777-48c1-96a1-1e518f393fa4"
@@ -180,25 +189,50 @@ function new_transport_conjoint()
     transport, odf
 end
 
-function gender(i)
-    return if i == 1
-      "Male"
+function recode_gender( i :: Int )::String
+    return if i == 1 
+        "Male"
     elseif i == 2
-      "Female"
+        "Female"
     elseif i == 3
-      "Other"
+        "In Another Way"
     end
 end
 
-function polparty(i)
+function agdis(i::Int)::String
     return if i == 1
-        "Brexit"
+        "1. Strongly disagree"
     elseif i == 2
-        "Conservative"
+        "2. Disagree"
     elseif i == 3
-        "Green Party"
+        "3. Neither agree nor disagree"
     elseif i == 4
-        "Labour"
+        "4. Agree"
+    elseif i == 5
+        "5. Strongly agree"
+    end
+end
+
+function yn(i::Int)::String
+    return if i == 1
+        "Yes"
+    else
+        "No"
+    end
+end
+
+"""
+Energy is ints, transport is strings, FUCKKKKKKKKK
+"""
+function polparty(i::Int)::String
+    return if i == 1
+        "Brexit Party"
+    elseif i == 2
+        "Conservative Party"
+    elseif i == 3
+         "Green Party"
+    elseif i == 4
+         "Labour Party"
     elseif i == 5
         "Liberal Democrats"
     elseif i == 11
@@ -206,17 +240,191 @@ function polparty(i)
     elseif i == 12
         "Scottish National Party"
     elseif i == 6
-        "Independent"
+        "Independent candidate"
     elseif i == 7
-        "Other"
+        "Other (please name below)"
     elseif i == 8
-        "Chose not to vote"
+         "I chose not to vote at the last General Election"
     elseif i == 9
-        "Not eligible"
+        "I was not eligible to vote"
     elseif i == 10
         "Prefer not to say"
     end
 end
+
+function mayor(i::Int)
+    return if i == 2
+        "Paul Donaghy (Reform UK)"
+    elseif i == 3
+        "Jamie Driscoll"        
+    elseif i == 4 
+        "Andrew Gray (Green)"
+    elseif i == 5
+        "Aidan King (Liberal Democrats)"
+    elseif i == 12
+        "Kim McGuinness (Labour Party)"
+    elseif i == 1
+        "Guy Renner-Thomas (Conservative)"
+    elseif i == 13
+        "I don’t intend to vote in the North East Combined Authority Mayoral Election"
+    elseif i == 9
+        "I will not be eligible to vote"
+    elseif i == 11 
+        "Don't know"
+    elseif i == 10
+        "Prefer not to say"
+    end
+end
+
+
+function elvote(i)
+    return if i == 1
+        "I always vote at General Elections"
+    elseif i == 2
+        "I sometimes vote at General Elections"
+    elseif i == 3
+        "I never vote at General Elections"
+    elseif i == 4
+        "I've not been eligible in the past to vote at a General Election"
+    elseif i == 5
+        "Don't know"
+    elseif i == 6
+        "Prefer not to say"
+    end
+end
+
+function gender(i)
+    return if i == 1
+      "Male"
+    elseif i == 2
+      "Female"
+    elseif i == 3
+       "In another way (please type in below)"
+    end
+end
+
+function satisfied(i::Int)::Union{Missing,String}
+    @argcheck i in [1:9..., missing]
+    return if i == 1
+        "1. Completely dissatisfied"
+    elseif i == 4
+        "2. Mostly dissatisfied"
+    elseif i == 5
+        "3. Somewhat dissatisfied"
+    elseif i == 6
+        "4. Neither satisfied nor dissatisfied"
+    elseif i == 7
+        "5. Somewhat satisfied"
+    elseif i == 8
+        "6. Mostly satisfied"
+    elseif i == 9
+        "7. Completely satisfied"
+    elseif ismissing(i)
+        missing
+    end
+end
+
+function adls(i::Union{Int,Missing})::Union{Missing,String}
+    return if ismissing(i)
+        missing
+    elseif i == 1
+        "Not at all"
+    elseif i == 2 
+        "Yes, a little"
+    elseif i == 3
+        "Yes, a lot"
+    end
+end
+
+function recode_ethnic( i :: Union{Int,Missing} )::Union{String,Missing}
+    return if ismissing(i) 
+        missing
+    elseif i == 1
+        "Ethnic British" 
+    else 
+        "Other Ethnic" 
+    end
+end
+
+function goodbad(i::Int)::String
+    return if i == 1
+        "Very good"
+    elseif i == 4
+        "Good"
+    elseif i == 5
+        "Fair"
+    elseif i == 6
+        "Bad"
+    elseif i == 7
+        "Very bad"
+    end
+end
+
+function recode_employment( employment :: Int ) :: String
+    return if employment in [6,7,8,12]
+        "Working/SE Inc. Part-Time"
+    else 
+        "Not Working, Inc. Retired/Caring/Student"
+    end
+end
+
+function littlelot(i::Int)::String
+    return if i == 1
+        "Yes, a lot"
+    elseif i == 2
+        "Yes, a little"
+    elseif i == 3
+        "Not at all"
+    end
+end
+
+function fm(i::Int)::String
+    return if i == 1
+        "Living comfortably"
+    elseif i == 2
+        "Doing alright"
+    elseif i == 3
+        "Just about getting by"
+    elseif i == 4 
+        "Finding it quite difficult"
+    elseif i == 5
+        "Finding it very difficult"
+    end
+end
+
+function sad(i)
+    return if ismissing(i)
+        missing
+    elseif i == 0
+        "0: not at all"
+    elseif i in [1,2,4,5,7,8]
+        "$i"
+    elseif i == 3
+        "3: a little"
+    elseif i == 6
+        "6: moderately"
+    elseif i == 9
+        "9: severely"
+    end
+end
+
+
+# AbstractString[String15("0: not at all"), String15("1"), String15("2"), String15("3: a little"), String15("4"), String15("5"), String15("6: moderately"), String15("7"), String15("8"), String15("9: severely")]
+
+#=
+
+
+
+
+
+ "I was not eligible to vote at t" ⋯ 34 bytes ⋯ "ple due to age, residency etc.)"
+ 
+
+ "Liberal Democrats"
+ 
+ "Plaid Cymru"
+ "Prefer not to say"
+ "Scottish National Party"
 
 
 #
@@ -311,3 +519,5 @@ function reweight(
         upper_multiple     = upper_multiple )
     return Weights( weights )
 end 
+
+=#

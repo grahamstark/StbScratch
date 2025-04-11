@@ -4,6 +4,7 @@ authors = ["Graham Stark"]
 version = "1.0.0-DEV"
 
 [deps]
+ActNow = "bbafd3c4-fe84-4915-9300-93777f3299cf"
 AlgebraOfGraphics = "cbdf2221-f076-402e-a563-3d30da359d67"
 ArgCheck = "dce04be8-c92d-5529-be00-80e4d2c0e197"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
@@ -52,6 +53,7 @@ Tidier = "f0413319-3358-4bb0-8e7c-0c83523a93bd"
 WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 
 [compat]
+ActNow = "1.0.0"
 ArgCheck = "2.3.0"
 Colors = "0.12.11"
 DataStructures = "0.18.20"
